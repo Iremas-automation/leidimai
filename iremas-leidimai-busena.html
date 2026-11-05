@@ -300,7 +300,7 @@ main.wide{max-width:1200px}
   .rec-btn{margin-left:0}
 }
 
-/* administrator actions */
+/* initial check (pirminė patikra) actions */
 .adm-actions{display:inline-flex;gap:8px;margin-left:auto}
 .adm-actions + .rec-btn{margin-left:0}
 .rec-btn.adm-ok{background:var(--primary);color:#fff;border-color:var(--primary)}
@@ -334,13 +334,13 @@ main.wide{max-width:1200px}
     <button class="filter-toggle" id="filterToggle" type="button">Filtrai</button>
     <div class="list-layout">
       <aside class="filter-panel" id="filterPanel" aria-label="Filtrai">
-        <div class="fgroup" id="adminGroup" hidden>
-          <div class="fgroup-title">Administratorė</div>
-          <label class="fopt"><input type="checkbox" id="f_todo"> Laukia mano sprendimo</label>
+        <div class="fgroup" id="adminGroup">
+          <div class="fgroup-title">Pirminė patikra</div>
+          <label class="fopt"><input type="checkbox" id="f_todo"> Laukia pirminės patikros</label>
         </div>
         <div class="fgroup">
           <div class="fgroup-title">Rodyti</div>
-          <label class="fopt"><input type="checkbox" id="f_mine" checked> Tik mano užsakymai</label>
+          <label class="fopt"><input type="checkbox" id="f_mine"> Tik mano užsakymai</label>
         </div>
         <div class="fgroup">
           <div class="fgroup-title">Būsena</div>
@@ -424,10 +424,7 @@ const SP_CONFIG = {
   siteUrl: 'https://achemosgrupelt.sharepoint.com/sites/IremasLeidimai',
   listTitle: 'Leidimai_darbuotojams',
   permitPrefix: 'LD',                                                // leidimo Nr.: LD-2026-0001
-  formVersion: 'staff-1.1',
-  // Biuro administratorė(s): mato visus užsakymus ir gali „Priimti“ (→ Tvirtinama) arba „Atšaukti“ (→ Atšaukta).
-  // Įrašykite darbo el. pašto adresus (mažosiomis ar didžiosiomis – nesvarbu).
-  adminEmails: ['ADMINISTRATORE@iremas.lt']
+  formVersion: 'staff-1.1'
 };
 /* ===================================================================== */
 
@@ -446,15 +443,13 @@ window.SPC = (function () {
     ValidFrom: 'Galioja nuo', ValidTo: 'Galioja iki', DataConfirmed: 'Duomenys patvirtinti', ApprovalChain: 'Tvirtinimo seka',
     Approval1Decision: '1 tvirtinimas (M. Petraitis) – sprendimas', Approval1Date: '1 tvirtinimas – data', Approval1Comment: '1 tvirtinimas – komentaras',
     Approval2Decision: '2 tvirtinimas (E. Juzėnas) – sprendimas', Approval2Date: '2 tvirtinimas – data', Approval2Comment: '2 tvirtinimas – komentaras',
-    AdminDecision: 'Administratorė – sprendimas', AdminDate: 'Administratorė – data', AdminComment: 'Administratorė – komentaras', AdminBy: 'Administratorė – kas sprendė',
+    AdminDecision: 'Pirminė patikra – sprendimas', AdminDate: 'Pirminė patikra – data', AdminComment: 'Pirminė patikra – komentaras', AdminBy: 'Pirminė patikra – kas tikrino',
     OfficeDecision: 'Leidimų biuras – sprendimas', OfficeDate: 'Leidimų biuras – data', OfficeComment: 'Leidimų biuras – komentaras',
     PermitPdf: 'Leidimo PDF', PdfCreated: 'PDF sukurtas',
     FormVersion: 'Formos versija', PayloadJson: 'Formos duomenys (JSON)'
   };
 
   const api = { configured, config: SP_CONFIG, DISPLAY, account: null };
-  api.isAdmin = () => !!api.account && (SP_CONFIG.adminEmails || [])
-    .map(e => String(e).trim().toLowerCase()).includes(String(api.account.username || '').toLowerCase());
   if (!configured) return api;
 
   const spOrigin = new URL(SP_CONFIG.siteUrl).origin;
@@ -587,11 +582,12 @@ function gateCard(title, text, btnText, msLogo, onClick) {
   const todayStr = () => ymd(new Date());
 
   const STATUS_CLS = { 'Pateikta': 'st-new', 'Tvirtinama': 'st-wait', 'Patvirtinta': 'st-ok', 'Atmesta': 'st-no', 'Atšaukta': 'st-cancel' };
-  const OFFICE = 'Leidimų biuras', ADMIN = 'Administratorė';
+  const OFFICE = 'Leidimų biuras', CHECK = 'Pirminė patikra';
+  const isCheckStep = n => n === CHECK || n === 'Administratorė';   // older requests used the old name
   // lower-case + strip Lithuanian accents, so "onaite" finds "Onaitė" and "skod" finds "Škoda"
   const fold = s => String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-  let all = [], lastUpdated = null, me = '', isAdmin = false;
+  let all = [], lastUpdated = null, me = '';
   const open = new Set();          // ids of expanded cards (kept across refreshes)
 
   /* ---------- data ---------- */
@@ -649,7 +645,7 @@ function gateCard(title, text, btnText, msLogo, onClick) {
     const now = new Date();
     const list = all.filter(r => {
       if (mine && me && r.byEmail !== me) return false;
-      if (isAdmin && $('f_todo').checked && r.status !== 'Pateikta') return false;
+      if ($('f_todo').checked && r.status !== 'Pateikta') return false;
       if (st.length && !st.includes(r.status)) return false;
       if (tp.length && !tp.includes(r.PermitType)) return false;
       if (users.length && !users.includes(r.by)) return false;
@@ -669,13 +665,13 @@ function gateCard(title, text, btnText, msLogo, onClick) {
       return true;
     });
     render(list);
-    const n = st.length + tp.length + val.length + dt.length + users.length + ((from || to) ? 1 : 0) + (mine ? 1 : 0) + (isAdmin && $('f_todo').checked ? 1 : 0);
+    const n = st.length + tp.length + val.length + dt.length + users.length + ((from || to) ? 1 : 0) + (mine ? 1 : 0) + ($('f_todo').checked ? 1 : 0);
     $('filterToggle').textContent = n ? 'Filtrai (' + n + ')' : 'Filtrai';
     updateUserBtn();
   }
 
   function clearFilters() {
-    document.querySelectorAll('.filter-panel input[type=checkbox]').forEach(c => { c.checked = isAdmin ? c.id === 'f_todo' : c.id === 'f_mine'; });
+    document.querySelectorAll('.filter-panel input[type=checkbox]').forEach(c => { c.checked = false; });
     $('list_search').value = '';
     ['f_from', 'f_to'].forEach(id => { const i = $(id); if (i._flatpickr) i._flatpickr.clear(false); i.value = ''; });
     apply();
@@ -696,11 +692,11 @@ function gateCard(title, text, btnText, msLogo, onClick) {
 
   /* ---------- rendering ---------- */
   function approvalSteps(r) {
-    const chain = String(r.ApprovalChain || (r.PermitType === 'Naujam darbuotojui' ? ADMIN + ' → ' + OFFICE : ADMIN + ' → M. Petraitis → E. Juzėnas → ' + OFFICE))
-      .split('→').map(s => s.trim()).filter(Boolean);
+    const chain = String(r.ApprovalChain || (r.PermitType === 'Naujam darbuotojui' ? CHECK + ' → ' + OFFICE : CHECK + ' → M. Petraitis → E. Juzėnas → ' + OFFICE))
+      .split('→').map(s => s.trim()).filter(Boolean).map(s => (isCheckStep(s) ? CHECK : s));
     let n = 0, blocked = false, currentSet = false;
     return chain.map(name => {
-      const k = name === OFFICE ? 'Office' : name === ADMIN ? 'Admin' : 'Approval' + (++n);
+      const k = name === OFFICE ? 'Office' : name === CHECK ? 'Admin' : 'Approval' + (++n);
       const dec = r[k + 'Decision'], date = r[k + 'Date'], com = r[k + 'Comment'];
       let state = dec === 'Patvirtinta' ? 'ok' : dec === 'Atmesta' ? 'no' : 'todo';
       if (state === 'todo' && !blocked && !currentSet && !['Atmesta', 'Atšaukta'].includes(r.status)) { state = 'cur'; currentSet = true; }
@@ -745,7 +741,7 @@ function gateCard(title, text, btnText, msLogo, onClick) {
         '<div class="rec-meta">' + meta.map(m => '<span>' + m + '</span>').join('') + '</div>' +
         chain +
         '<div class="rec-actions">' + pdf +
-        (isAdmin && r.status === 'Pateikta'
+        (r.status === 'Pateikta'
           ? '<span class="adm-actions"><button type="button" class="rec-btn adm-ok" data-act="accept" data-id="' + r.id + '">✓ Priimti tvirtinti</button>' +
             '<button type="button" class="rec-btn adm-no" data-act="cancel" data-id="' + r.id + '">✕ Atšaukti</button></span>'
           : '') +
@@ -767,7 +763,7 @@ function gateCard(title, text, btnText, msLogo, onClick) {
       row('Transporto nuosavybė', r.VehicleOwnership) + row('Tikslas', r.Purpose) + row('Transporto rūšis', r.VehicleType) +
       row('Markė, modelis', [r.VehicleMake, r.VehicleModel].filter(Boolean).join(' ')) + row('Valstybinis Nr.', r.PlateNumber) +
       row('Keičiamas valst. Nr.', r.ReplacedPlate) + row('Galioja nuo', fmtDate(r.ValidFrom)) + row('Galioja iki', fmtDate(r.ValidTo)) +
-      row('Pateikė', r.by) + row('Pateikta', fmtDT(r.created)) + row('Administratorės sprendimą priėmė', r.AdminBy) + row('PDF sukurtas', fmtDT(r.PdfCreated)) +
+      row('Pateikė', r.by) + row('Pateikta', fmtDT(r.created)) + row('Pirminę patikrą atliko', r.AdminBy) + row('PDF sukurtas', fmtDT(r.PdfCreated)) +
       '</dl><div class="d-sub">Tvirtinimas</div><dl>' + ap + '</dl></div>';
   }
 
@@ -805,7 +801,7 @@ function gateCard(title, text, btnText, msLogo, onClick) {
     setInterval(() => { if (document.visibilityState === 'visible') load(false); }, 60000);
   }
 
-  /* ---------- administrator decision: Pateikta → Tvirtinama (accept) / Atšaukta (cancel) ---------- */
+  /* ---------- initial check (pirminė patikra): Pateikta → Tvirtinama (accept) / Atšaukta (cancel) ---------- */
   let pending = null;
   function openAction(id, act) {
     const r = all.find(x => x.id === id);
@@ -867,12 +863,6 @@ function gateCard(title, text, btnText, msLogo, onClick) {
   function start() {
     $('app').hidden = false;
     me = ((SPC.account && SPC.account.username) || '').toLowerCase();
-    isAdmin = SPC.isAdmin();
-    if (isAdmin) {            // administrator: show everything waiting for her decision by default
-      $('adminGroup').hidden = false;
-      $('f_mine').checked = false;
-      $('f_todo').checked = true;
-    }
     $('actGo').addEventListener('click', doAction);
     $('actBack').addEventListener('click', () => $('actDlg').close());
     wire();
