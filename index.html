@@ -422,7 +422,18 @@ const SP_CONFIG = {
     VehicleOwnership: { rented: 'Nuomojama', company: 'UAB „Iremas“' }
   };
   // Date-only columns: send midday UTC so the date never shifts with the time zone
-  const spDate = d => (d ? d + 'T12:00:00Z' : null);
+  const spDate = d => d || null;
+
+  /* Lithuanian display names from the column spec – used to find a column even if it was renamed */
+  const DISPLAY = {
+    Title: 'Leidimo Nr.', PermitType: 'Leidimo tipas', RequestKind: 'Užsakymo tipas', Status: 'Būsena',
+    EmployeeFirstName: 'Vardas', EmployeeLastName: 'Pavardė', Position: 'Pareigos', TabelNo: 'Tabelio Nr.',
+    ContractDate: 'Sutarties sudarymo data', ContractTerm: 'Sutarties terminas', ContractEndDate: 'Sutarties pabaigos data',
+    VehicleOwnership: 'Transporto nuosavybė', Purpose: 'Tikslas', ReplacedPlate: 'Keičiamos TP valst. Nr.',
+    VehicleType: 'Transporto rūšis', VehicleMake: 'Markė', VehicleModel: 'Modelis', PlateNumber: 'Valstybinis Nr.',
+    ValidFrom: 'Galioja nuo', ValidTo: 'Galioja iki', DataConfirmed: 'Duomenys patvirtinti', ApprovalChain: 'Tvirtinimo seka',
+    FormVersion: 'Formos versija', PayloadJson: 'Formos duomenys (JSON)'
+  };
 
   function toListItem(payload, S) {
     const D = payload.data;
@@ -507,17 +518,61 @@ const SP_CONFIG = {
     return res.status === 204 ? null : res.json();
   }
 
-  const itemsUrl = SP_CONFIG.siteUrl.replace(/\/$/, '') + "/_api/web/lists/getbytitle('" +
-    encodeURIComponent(SP_CONFIG.listTitle.replace(/'/g, "''")) + "')/items";
+  const listUrl = SP_CONFIG.siteUrl.replace(/\/$/, '') + "/_api/web/lists/getbytitle('" +
+    encodeURIComponent(SP_CONFIG.listTitle.replace(/'/g, "''")) + "')";
+  const itemsUrl = listUrl + '/items';
+
+  /* Read the list's real columns once and map our names → the property name the REST API expects.
+     Works whether columns were created by hand (internal name = PermitType) or imported from Excel
+     (internal name = field_1 …, display name = PermitType), and after renaming to Lithuanian. */
+  let fieldMap = null;
+  async function loadFields() {
+    if (fieldMap) return fieldMap;
+    const r = await sp(listUrl + '/fields?$select=Title,InternalName,EntityPropertyName,TypeAsString,ReadOnlyField,Hidden', 'GET');
+    const fields = (r.value || []).filter(f => !f.ReadOnlyField && !f.Hidden);
+    const norm = x => String(x || '').trim().toLowerCase();
+    fieldMap = {};
+    Object.keys(DISPLAY).forEach(key => {
+      const f = fields.find(f => f.InternalName === key) ||
+                fields.find(f => f.EntityPropertyName === key) ||
+                fields.find(f => norm(f.Title) === norm(key)) ||
+                fields.find(f => norm(f.Title) === norm(DISPLAY[key]));
+      if (f) fieldMap[key] = f;
+    });
+    console.log('SharePoint column map', Object.fromEntries(Object.entries(fieldMap).map(([k, f]) => [k, f.EntityPropertyName + ' (' + f.TypeAsString + ')'])));
+    return fieldMap;
+  }
+
+  // convert a value to what the column type accepts
+  function convert(v, type) {
+    const isDate = typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+    if (type === 'Boolean') return v === true || v === 'Taip';
+    if (type === 'DateTime') return isDate ? v + 'T12:00:00Z' : v; // midday UTC → the date never shifts
+    if (type === 'Number' || type === 'Currency') return Number(v);
+    if (typeof v === 'boolean') return v ? 'Taip' : 'Ne';
+    return String(v);
+  }
 
   CFG.onSubmit = async (payload, S) => {
-    const created = await sp(itemsUrl, 'POST', toListItem(payload, S));
+    const map = await loadFields();
+    const raw = toListItem(payload, S);
+    const body = {}, missing = [];
+    Object.entries(raw).forEach(([k, v]) => {
+      const f = map[k];
+      if (!f) { missing.push(k); return; }
+      body[f.EntityPropertyName] = convert(v, f.TypeAsString);
+    });
+    if (!Object.keys(body).length) throw new Error('Sąraše nerasta nė vieno formos stulpelio. Patikrinkite sąrašo pavadinimą ir stulpelius.');
+    const created = await sp(itemsUrl, 'POST', body);
     const id = created.Id || created.ID;
     const num = SP_CONFIG.permitPrefix + '-' + new Date().getFullYear() + '-' + String(id).padStart(4, '0');
-    await sp(itemsUrl + '(' + id + ')', 'POST', { Title: num }, { 'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE' });
+    const titleProp = map.Title ? map.Title.EntityPropertyName : 'Title';
+    await sp(itemsUrl + '(' + id + ')', 'POST', { [titleProp]: num }, { 'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE' });
+    if (missing.length) console.warn('Columns not found in the list (not saved):', missing);
     return {
       title: 'Užsakymas pateiktas',
-      html: 'Leidimo užsakymas užregistruotas ir perduotas tvirtinti.<br><span class="ok-num">' + num + '</span>'
+      html: 'Leidimo užsakymas užregistruotas ir perduotas tvirtinti.<br><span class="ok-num">' + num + '</span>' +
+        (missing.length ? '<br><small style="color:#8a3a14">Administratoriui: sąraše nerasti stulpeliai, jų reikšmės neišsaugotos – ' + missing.join(', ') + '.</small>' : '')
     };
   };
 
