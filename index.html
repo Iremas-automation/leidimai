@@ -228,7 +228,7 @@ dialog pre.pre-error{background:var(--err-soft);color:var(--err);white-space:pre
 <header class="topbar">
   <a class="back" href="https://www.iremas.lt">&larr;<span class="back-txt"> Grįžti į iremas.lt</span></a>
   <div class="brand"><span class="wm">IREMAS</span><span class="tag">Koncerno „Achemos grupė“ narė</span></div>
-  <div class="top-right"><a href="iremas-leidimai-sveciams.html">Svečių leidimai &rarr;</a></div>
+  <div class="top-right"><a href="iremas-leidimai-busena.html">Užsakymų būsena &rarr;</a></div>
 </header>
 <main>
   <div class="hero">
@@ -393,38 +393,25 @@ window.FU = (function () {
 })();
 
 /* =====================================================================
-   KONFIGŪRACIJA – užpildykite po programos registracijos Entra ID
+   KONFIGŪRACIJA – bendra užsakymo formai ir būsenos puslapiui
    (Client ID ir Tenant ID nėra slapti – juos galima laikyti GitHub'e)
    ===================================================================== */
 const SP_CONFIG = {
-  tenantId: 'f300c84f-87f0-4d9e-8284-1e36dbe06fbe',                                   // Entra ID → Overview → Directory (tenant) ID
-  clientId: '03dc6464-8653-43b1-83f0-99833ec01e3d',                                   // App registration → Application (client) ID
-  siteUrl: 'https://achemosgrupelt.sharepoint.com/sites/IremasLeidimai',      // SharePoint svetainė, kurioje yra sąrašas
-  listTitle: 'Leidimai_darbuotojams',                           // sąrašo pavadinimas
-  permitPrefix: 'LD',                                           // leidimo Nr.: LD-2026-0001
+  tenantId: 'f300c84f-87f0-4d9e-8284-1e36dbe06fbe',                  // Entra ID → Directory (tenant) ID
+  clientId: '03dc6464-8653-43b1-83f0-99833ec01e3d',                  // App registration → Application (client) ID
+  siteUrl: 'https://achemosgrupelt.sharepoint.com/sites/IremasLeidimai',
+  listTitle: 'Leidimai_darbuotojams',
+  permitPrefix: 'LD',                                                // leidimo Nr.: LD-2026-0001
   formVersion: 'staff-1.0'
 };
 /* ===================================================================== */
 
-(function () {
-  const CFG = window.FORM_CONFIG;
+/* Shared Microsoft sign-in (MSAL) + SharePoint REST helpers → window.SPC */
+window.SPC = (function () {
   const configured = !/ČIA|TENANT\.sharepoint|SVETAINE/.test(SP_CONFIG.tenantId + SP_CONFIG.clientId + SP_CONFIG.siteUrl);
 
-  /* --- Form value → SharePoint Choice value (must match the list exactly) --- */
-  const CHOICE = {
-    PermitType: {
-      newEmployee: 'Naujam darbuotojui',
-      companyVehicle: 'Nuomojamam arba UAB „Iremas“ transportui',
-      personalVehicle: 'Darbuotojo asmeniniam transportui'
-    },
-    RequestKind: { new: 'Naujas leidimas', replace: 'Transporto pakeitimas' },
-    ContractTerm: { fixed: 'Terminuota', open: 'Neterminuota' },
-    VehicleOwnership: { rented: 'Nuomojama', company: 'UAB „Iremas“' }
-  };
-  // Date-only columns: send midday UTC so the date never shifts with the time zone
-  const spDate = d => d || null;
-
-  /* Lithuanian display names from the column spec – used to find a column even if it was renamed */
+  /* Lithuanian display names from the column spec – lets us find a column even if it was
+     imported from Excel (internal name field_N) or renamed to Lithuanian */
   const DISPLAY = {
     Title: 'Leidimo Nr.', PermitType: 'Leidimo tipas', RequestKind: 'Užsakymo tipas', Status: 'Būsena',
     EmployeeFirstName: 'Vardas', EmployeeLastName: 'Pavardė', Position: 'Pareigos', TabelNo: 'Tabelio Nr.',
@@ -432,53 +419,16 @@ const SP_CONFIG = {
     VehicleOwnership: 'Transporto nuosavybė', Purpose: 'Tikslas', ReplacedPlate: 'Keičiamos TP valst. Nr.',
     VehicleType: 'Transporto rūšis', VehicleMake: 'Markė', VehicleModel: 'Modelis', PlateNumber: 'Valstybinis Nr.',
     ValidFrom: 'Galioja nuo', ValidTo: 'Galioja iki', DataConfirmed: 'Duomenys patvirtinti', ApprovalChain: 'Tvirtinimo seka',
+    Approval1Decision: '1 tvirtinimas (M. Petraitis) – sprendimas', Approval1Date: '1 tvirtinimas – data', Approval1Comment: '1 tvirtinimas – komentaras',
+    Approval2Decision: '2 tvirtinimas (E. Juzėnas) – sprendimas', Approval2Date: '2 tvirtinimas – data', Approval2Comment: '2 tvirtinimas – komentaras',
+    OfficeDecision: 'Leidimų biuras – sprendimas', OfficeDate: 'Leidimų biuras – data', OfficeComment: 'Leidimų biuras – komentaras',
+    PermitPdf: 'Leidimo PDF', PdfCreated: 'PDF sukurtas',
     FormVersion: 'Formos versija', PayloadJson: 'Formos duomenys (JSON)'
   };
 
-  function toListItem(payload, S) {
-    const D = payload.data;
-    const item = {
-      Title: 'Naujas',                       // replaced with the permit number right after creation
-      PermitType: CHOICE.PermitType[S.permitType],
-      RequestKind: CHOICE.RequestKind[D.requestKind],
-      Status: 'Pateikta',
-      EmployeeFirstName: D.firstName,
-      EmployeeLastName: D.lastName,
-      Position: D.position,
-      TabelNo: D.tabelNo,
-      ContractDate: spDate(D.contractDate),
-      ContractTerm: CHOICE.ContractTerm[D.contractTerm],
-      ContractEndDate: spDate(D.contractEnd),
-      VehicleOwnership: CHOICE.VehicleOwnership[D.ownership],
-      Purpose: D.purpose,
-      ReplacedPlate: D.replacedPlate,
-      VehicleType: D.vehicleType,
-      VehicleMake: D.make,
-      VehicleModel: D.model,
-      PlateNumber: D.plate,
-      ValidFrom: spDate(D.dateFrom),
-      ValidTo: spDate(D.dateTo),
-      DataConfirmed: !!D.confirmed,
-      ApprovalChain: payload.approvalChain.join(' → '),
-      FormVersion: SP_CONFIG.formVersion,
-      PayloadJson: JSON.stringify(payload)
-    };
-    Object.keys(item).forEach(k => (item[k] == null || item[k] === '') && delete item[k]);
-    return item;
-  }
+  const api = { configured, config: SP_CONFIG, DISPLAY, account: null };
+  if (!configured) return api;
 
-  /* --- Demo mode while the config is not filled in --- */
-  if (!configured) {
-    CFG.start = (render, root) => {
-      root.replaceChildren(gateCard(
-        'Forma dar nesukonfigūruota',
-        'Failo pradžioje (SP_CONFIG) įrašykite Tenant ID, Client ID ir SharePoint svetainės adresą. Kol to nepadaryta, formą galite išbandyti demonstraciniu režimu – duomenys niekur nesiunčiami.',
-        'Tęsti demonstraciniu režimu', null, () => render()));
-    };
-    return;
-  }
-
-  /* --- MSAL (Microsoft sign-in) --- */
   const spOrigin = new URL(SP_CONFIG.siteUrl).origin;
   const SCOPES = [spOrigin + '/AllSites.Write'];
   const pca = new msal.PublicClientApplication({
@@ -489,20 +439,19 @@ const SP_CONFIG = {
     },
     cache: { cacheLocation: 'sessionStorage' }
   });
-  let account = null;
 
   async function getToken() {
     try {
-      return (await pca.acquireTokenSilent({ scopes: SCOPES, account })).accessToken;
+      return (await pca.acquireTokenSilent({ scopes: SCOPES, account: api.account })).accessToken;
     } catch (e) {
-      // the click on "Pateikti" is a user action, so a popup is allowed and the form data is kept
-      return (await pca.acquireTokenPopup({ scopes: SCOPES, account })).accessToken;
+      // only called from user actions or right after sign-in, so a popup is allowed and page state is kept
+      return (await pca.acquireTokenPopup({ scopes: SCOPES, account: api.account })).accessToken;
     }
   }
 
   async function sp(url, method, body, extraHeaders) {
     const res = await fetch(url, {
-      method,
+      method: method || 'GET',
       headers: Object.assign({
         Authorization: 'Bearer ' + (await getToken()),
         Accept: 'application/json;odata=nometadata',
@@ -520,15 +469,11 @@ const SP_CONFIG = {
 
   const listUrl = SP_CONFIG.siteUrl.replace(/\/$/, '') + "/_api/web/lists/getbytitle('" +
     encodeURIComponent(SP_CONFIG.listTitle.replace(/'/g, "''")) + "')";
-  const itemsUrl = listUrl + '/items';
 
-  /* Read the list's real columns once and map our names → the property name the REST API expects.
-     Works whether columns were created by hand (internal name = PermitType) or imported from Excel
-     (internal name = field_1 …, display name = PermitType), and after renaming to Lithuanian. */
   let fieldMap = null;
   async function loadFields() {
     if (fieldMap) return fieldMap;
-    const r = await sp(listUrl + '/fields?$select=Title,InternalName,EntityPropertyName,TypeAsString,ReadOnlyField,Hidden', 'GET');
+    const r = await sp(listUrl + '/fields?$select=Title,InternalName,EntityPropertyName,TypeAsString,ReadOnlyField,Hidden');
     const fields = (r.value || []).filter(f => !f.ReadOnlyField && !f.Hidden);
     const norm = x => String(x || '').trim().toLowerCase();
     fieldMap = {};
@@ -543,6 +488,111 @@ const SP_CONFIG = {
     return fieldMap;
   }
 
+  /* Sign-in gate: shows a card in `root` until the user is signed in, then calls onReady() */
+  async function gate(root, intro, onReady) {
+    root.replaceChildren(gateCard('Jungiamasi…', 'Tikrinamas prisijungimas.'));
+    try {
+      await pca.initialize();
+      const r = await pca.handleRedirectPromise();
+      api.account = (r && r.account) || pca.getActiveAccount() || pca.getAllAccounts()[0] || null;
+    } catch (e) {
+      console.error(e);
+      root.replaceChildren(gateCard('Prisijungti nepavyko', String(e.message || e), 'Bandyti dar kartą', false, () => location.reload()));
+      return;
+    }
+    if (!api.account) {
+      root.replaceChildren(gateCard('Prisijunkite', intro, 'Prisijungti su Microsoft paskyra', true,
+        () => pca.loginRedirect({ scopes: SCOPES, prompt: 'select_account' })));
+      return;
+    }
+    pca.setActiveAccount(api.account);
+    showUser();
+    onReady();
+  }
+
+  function showUser() {
+    const box = document.querySelector('.top-right');
+    const out = document.createElement('button');
+    out.type = 'button'; out.textContent = 'Atsijungti';
+    out.onclick = () => pca.logoutRedirect({ account: api.account, postLogoutRedirectUri: location.origin + location.pathname });
+    const who = document.createElement('span');
+    who.className = 'who'; who.textContent = api.account.name || api.account.username;
+    const wrap = document.createElement('div'); wrap.className = 'user-box';
+    const extra = box.querySelector('a');           // keep the page's own link (e.g. "Būsena →")
+    if (extra) wrap.append(extra);
+    wrap.append(who, out);
+    box.replaceChildren(wrap);
+    box.style.display = 'block';
+  }
+
+  return Object.assign(api, { sp, getToken, listUrl, itemsUrl: listUrl + '/items', loadFields, gate });
+})();
+
+function gateCard(title, text, btnText, msLogo, onClick) {
+  const card = document.createElement('section');
+  card.className = 'card gate';
+  card.innerHTML = '<h2 class="card-title"></h2><p></p>';
+  card.querySelector('h2').textContent = title;
+  card.querySelector('p').textContent = text;
+  if (btnText) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn btn-primary';
+    if (msLogo) b.innerHTML = '<span class="ms"><i style="background:#f25022"></i><i style="background:#7fba00"></i><i style="background:#00a4ef"></i><i style="background:#ffb900"></i></span>';
+    b.append(btnText);
+    b.onclick = onClick;
+    card.append(b);
+  }
+  return card;
+}
+
+/* Employee order form → SharePoint (uses window.SPC from sp-common.js) */
+(function () {
+  const CFG = window.FORM_CONFIG;
+
+  /* --- Form value → SharePoint Choice value (must match the list exactly) --- */
+  const CHOICE = {
+    PermitType: {
+      newEmployee: 'Naujam darbuotojui',
+      companyVehicle: 'Nuomojamam arba UAB „Iremas“ transportui',
+      personalVehicle: 'Darbuotojo asmeniniam transportui'
+    },
+    RequestKind: { new: 'Naujas leidimas', replace: 'Transporto pakeitimas' },
+    ContractTerm: { fixed: 'Terminuota', open: 'Neterminuota' },
+    VehicleOwnership: { rented: 'Nuomojama', company: 'UAB „Iremas“' }
+  };
+
+  function toListItem(payload, S) {
+    const D = payload.data;
+    const item = {
+      Title: 'Naujas',                       // replaced with the permit number right after creation
+      PermitType: CHOICE.PermitType[S.permitType],
+      RequestKind: CHOICE.RequestKind[D.requestKind],
+      Status: 'Pateikta',
+      EmployeeFirstName: D.firstName,
+      EmployeeLastName: D.lastName,
+      Position: D.position,
+      TabelNo: D.tabelNo,
+      ContractDate: D.contractDate,
+      ContractTerm: CHOICE.ContractTerm[D.contractTerm],
+      ContractEndDate: D.contractEnd,
+      VehicleOwnership: CHOICE.VehicleOwnership[D.ownership],
+      Purpose: D.purpose,
+      ReplacedPlate: D.replacedPlate,
+      VehicleType: D.vehicleType,
+      VehicleMake: D.make,
+      VehicleModel: D.model,
+      PlateNumber: D.plate,
+      ValidFrom: D.dateFrom,
+      ValidTo: D.dateTo,
+      DataConfirmed: !!D.confirmed,
+      ApprovalChain: payload.approvalChain.join(' → '),
+      FormVersion: SP_CONFIG.formVersion,
+      PayloadJson: JSON.stringify(payload)
+    };
+    Object.keys(item).forEach(k => (item[k] == null || item[k] === '') && delete item[k]);
+    return item;
+  }
+
   // convert a value to what the column type accepts
   function convert(v, type) {
     const isDate = typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -553,8 +603,19 @@ const SP_CONFIG = {
     return String(v);
   }
 
+  /* --- Demo mode while the config is not filled in --- */
+  if (!SPC.configured) {
+    CFG.start = (render, root) => {
+      root.replaceChildren(gateCard(
+        'Forma dar nesukonfigūruota',
+        'Faile sp-common (SP_CONFIG) įrašykite Tenant ID, Client ID ir SharePoint svetainės adresą. Kol to nepadaryta, formą galite išbandyti demonstraciniu režimu – duomenys niekur nesiunčiami.',
+        'Tęsti demonstraciniu režimu', false, () => render()));
+    };
+    return;
+  }
+
   CFG.onSubmit = async (payload, S) => {
-    const map = await loadFields();
+    const map = await SPC.loadFields();
     const raw = toListItem(payload, S);
     const body = {}, missing = [];
     Object.entries(raw).forEach(([k, v]) => {
@@ -563,73 +624,23 @@ const SP_CONFIG = {
       body[f.EntityPropertyName] = convert(v, f.TypeAsString);
     });
     if (!Object.keys(body).length) throw new Error('Sąraše nerasta nė vieno formos stulpelio. Patikrinkite sąrašo pavadinimą ir stulpelius.');
-    const created = await sp(itemsUrl, 'POST', body);
+    const created = await SPC.sp(SPC.itemsUrl, 'POST', body);
     const id = created.Id || created.ID;
     const num = SP_CONFIG.permitPrefix + '-' + new Date().getFullYear() + '-' + String(id).padStart(4, '0');
     const titleProp = map.Title ? map.Title.EntityPropertyName : 'Title';
-    await sp(itemsUrl + '(' + id + ')', 'POST', { [titleProp]: num }, { 'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE' });
+    await SPC.sp(SPC.itemsUrl + '(' + id + ')', 'POST', { [titleProp]: num }, { 'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE' });
     if (missing.length) console.warn('Columns not found in the list (not saved):', missing);
     return {
       title: 'Užsakymas pateiktas',
       html: 'Leidimo užsakymas užregistruotas ir perduotas tvirtinti.<br><span class="ok-num">' + num + '</span>' +
+        '<br><a href="iremas-leidimai-busena.html">Peržiūrėti užsakymų būseną →</a>' +
         (missing.length ? '<br><small style="color:#8a3a14">Administratoriui: sąraše nerasti stulpeliai, jų reikšmės neišsaugotos – ' + missing.join(', ') + '.</small>' : '')
     };
   };
 
-  /* --- Sign-in gate + user box in the header --- */
-  function showUser() {
-    const box = document.querySelector('.top-right');
-    const out = document.createElement('button');
-    out.type = 'button'; out.textContent = 'Atsijungti';
-    out.onclick = () => pca.logoutRedirect({ account, postLogoutRedirectUri: location.origin + location.pathname });
-    const who = document.createElement('span');
-    who.className = 'who'; who.textContent = account.name || account.username;
-    const wrap = document.createElement('div'); wrap.className = 'user-box';
-    wrap.append(who, out);
-    box.replaceChildren(wrap);
-    box.style.display = 'block';
-  }
-
-  CFG.start = async (render, root) => {
-    root.replaceChildren(gateCard('Jungiamasi…', 'Tikrinamas prisijungimas.'));
-    try {
-      await pca.initialize();
-      const r = await pca.handleRedirectPromise();
-      account = (r && r.account) || pca.getActiveAccount() || pca.getAllAccounts()[0] || null;
-    } catch (e) {
-      console.error(e);
-      root.replaceChildren(gateCard('Prisijungti nepavyko', String(e.message || e), 'Bandyti dar kartą', null, () => location.reload()));
-      return;
-    }
-    if (!account) {
-      root.replaceChildren(gateCard(
-        'Prisijunkite',
-        'Leidimų užsakymo forma skirta UAB „Iremas“ darbuotojams. Prisijunkite su savo darbo Microsoft paskyra.',
-        'Prisijungti su Microsoft paskyra', true,
-        () => pca.loginRedirect({ scopes: SCOPES, prompt: 'select_account' })));
-      return;
-    }
-    pca.setActiveAccount(account);
-    showUser();
-    render();
-  };
-
-  function gateCard(title, text, btnText, msLogo, onClick) {
-    const card = document.createElement('section');
-    card.className = 'card gate';
-    card.innerHTML = '<h2 class="card-title"></h2><p></p>';
-    card.querySelector('h2').textContent = title;
-    card.querySelector('p').textContent = text;
-    if (btnText) {
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'btn btn-primary';
-      if (msLogo) b.innerHTML = '<span class="ms"><i style="background:#f25022"></i><i style="background:#7fba00"></i><i style="background:#00a4ef"></i><i style="background:#ffb900"></i></span>';
-      b.append(btnText);
-      b.onclick = onClick;
-      card.append(b);
-    }
-    return card;
-  }
+  CFG.start = (render, root) => SPC.gate(root,
+    'Leidimų užsakymo forma skirta UAB „Iremas“ darbuotojams. Prisijunkite su savo darbo Microsoft paskyra.',
+    render);
 })();
 
 </script>
