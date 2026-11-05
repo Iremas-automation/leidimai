@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="lt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leidimų užsakymų būsena</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.30.0/lib/msal-browser.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/flatpickr.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/4.6.13/l10n/lt.min.js"></script>
+<style>
+:root{--ink:#2b3036;--muted:#6b7079;--line:#d6d2ca;--field:#cbc7bf;--bg:#f5f2ec;--card:#fff;--soft:#fcfbf9;--primary:#4f5760;--primary-dark:#3a4148;--primary-soft:#eef0f2;--accent:#e8562a;--err:#c0283a;--err-soft:#fdecee;--tint:#e4e0d9}
+body.staff{--tint:#d9dde4}
+*{box-sizing:border-box}
+html{color-scheme:light}
+body{margin:0;font-family:Montserrat,system-ui,sans-serif;color:var(--ink);background:var(--bg);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:var(--primary-dark)}
+/* header */
+.topbar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;padding:16px 40px;background:#fff;box-shadow:0 2px 14px rgba(30,35,40,.07);position:relative;z-index:2}
+.back{color:var(--primary);text-decoration:none;font-weight:500;font-size:14px}
+.back:hover{text-decoration:underline}
+.brand{display:flex;flex-direction:column;align-items:center;line-height:1;text-decoration:none}
+.wm{font-weight:700;font-size:26px;letter-spacing:.2em;color:var(--primary);margin-right:-.2em}
+.tag{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:5px}
+.top-right{justify-self:end;text-align:right;font-size:13px;color:var(--muted)}
+.top-right a{font-weight:600;text-decoration:none}
+/* page */
+main{max-width:720px;margin:0 auto;padding:40px 16px 72px}
+.hero{text-align:center;margin-bottom:28px}
+.pill{display:inline-block;background:var(--tint);color:var(--primary-dark);font-size:12px;font-weight:600;padding:5px 14px;border-radius:999px}
+h1{font-weight:500;font-size:34px;margin:12px 0 4px;letter-spacing:-.01em}
+.lead{margin:0;color:var(--muted)}
+/* stepper */
+.stepper{list-style:none;display:flex;margin:0 auto 28px;padding:0;max-width:620px}
+.stepper li{flex:1;position:relative;text-align:center}
+.stepper li+li::before{content:"";position:absolute;top:9px;right:50%;width:100%;height:2px;background:var(--line)}
+.stepper li.done::before,.stepper li.cur::before{background:var(--primary)}
+.dot-btn{all:unset;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;gap:8px;width:100%;position:relative;z-index:1}
+.dot-btn:not(:disabled){cursor:pointer}
+.dot-btn:focus-visible .dot{outline:2px solid var(--primary);outline-offset:3px}
+.dot{width:20px;height:20px;border-radius:50%;background:#d8d4cc;box-shadow:0 0 0 4px var(--bg)}
+.done .dot{background:var(--primary)}
+.cur .dot{background:#fff;border:6px solid var(--primary)}
+.st-lbl{font-size:13px;color:var(--muted)}
+.done .st-lbl{color:var(--ink)}
+.cur .st-lbl{color:var(--ink);font-weight:600}
+.dot-btn:not(:disabled):hover .st-lbl{text-decoration:underline}
+/* card */
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:36px 40px 32px}
+.card-title{text-align:center;font-weight:600;font-size:24px;margin:0 0 4px}
+.card-sub{text-align:center;color:var(--muted);margin:0}
+.fields{display:flex;flex-direction:column;gap:20px;margin-top:24px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.lbl{font-size:14px;font-weight:500}
+.opt{color:var(--muted);font-weight:400}
+.hint{font-size:13px;color:var(--muted)}
+.hint:empty{display:none}
+.err-msg{font-size:12.5px;color:var(--err)}
+.err-msg:empty{display:none}
+.sub-h{font-size:15px;font-weight:600;margin:4px 0 -6px;padding-top:16px;border-top:1px solid #ece9e3}
+/* inputs */
+.input{font:inherit;width:100%;height:48px;padding:0 14px;border:1px solid var(--field);border-radius:6px;background:#fff;color:var(--ink);transition:border-color .15s,box-shadow .15s}
+textarea.input{height:auto;min-height:88px;padding:12px 14px;resize:vertical}
+.input::placeholder{color:#a3a39f}
+.input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(79,87,96,.15)}
+.has-err>.input,.has-err .ta-wrap .input,.has-err>select.input{border-color:var(--err)}
+.select{appearance:none;cursor:pointer;padding-right:40px;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%234f5760' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center}
+/* date */
+.date-wrap{position:relative}
+.date-input{padding-right:44px;font-variant-numeric:tabular-nums}
+.date-ic{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--primary);cursor:pointer;display:flex}
+.date-ic svg{width:18px;height:18px}
+.has-err .date-input{border-color:var(--err)}
+.flatpickr-calendar{font-family:Montserrat,system-ui,sans-serif;border-radius:10px;box-shadow:0 12px 32px rgba(30,35,40,.18);border:1px solid var(--line)}
+.flatpickr-calendar.arrowTop:before,.flatpickr-calendar.arrowTop:after{display:none}
+.flatpickr-months .flatpickr-month{height:44px}
+.flatpickr-current-month{font-size:15px;font-weight:600;padding-top:10px}
+.flatpickr-current-month .flatpickr-monthDropdown-months{font-weight:600}
+span.flatpickr-weekday{font-weight:600;color:var(--muted);font-size:12px}
+.flatpickr-day{border-radius:50%;color:var(--ink)}
+.flatpickr-day.today{border-color:var(--primary)}
+.flatpickr-day.selected,.flatpickr-day.selected:hover,.flatpickr-day.selected:focus{background:var(--primary);border-color:var(--primary);color:#fff}
+.flatpickr-day:hover,.flatpickr-day:focus{background:var(--primary-soft);border-color:var(--primary-soft)}
+.flatpickr-day.flatpickr-disabled,.flatpickr-day.flatpickr-disabled:hover,.flatpickr-day.prevMonthDay,.flatpickr-day.nextMonthDay{color:#c4c1ba}
+.flatpickr-months .flatpickr-prev-month:hover svg,.flatpickr-months .flatpickr-next-month:hover svg{fill:var(--primary)}
+/* segmented */
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--field);border-radius:8px;overflow:hidden;background:#fff}
+.seg-btn{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:10px;padding:10px 14px;min-height:48px;cursor:pointer;border-left:1px solid var(--field);transition:background .15s;color:var(--ink)}
+.seg-btn.has-sub{justify-content:flex-start;padding:12px 16px}
+.seg-btn:first-child{border-left:0}
+.seg-btn:hover{background:var(--soft)}
+.seg-btn.on{background:var(--primary-soft);box-shadow:inset 0 0 0 1.5px var(--primary);color:var(--primary-dark)}
+.seg-btn:focus-visible{outline:2px solid var(--primary);outline-offset:-4px}
+.seg-txt{display:flex;flex-direction:column}
+.seg-txt b{font-weight:600;font-size:14px}
+.seg-txt small{font-size:12px;color:var(--muted);line-height:1.35}
+.ic{display:inline-flex;flex:none}
+.ic svg{width:20px;height:20px}
+.has-err .seg{border-color:var(--err)}
+/* option cards */
+.cards{display:flex;flex-direction:column;gap:10px}
+.opt-card{all:unset;box-sizing:border-box;display:flex;gap:14px;align-items:flex-start;padding:16px 18px;border:1px solid var(--field);border-radius:8px;cursor:pointer;background:#fff;transition:background .15s}
+.opt-card:hover{background:var(--soft)}
+.opt-card.on{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--primary);background:var(--primary-soft)}
+.opt-card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.radio{flex:none;width:18px;height:18px;border-radius:50%;border:1.5px solid #a9a59d;margin-top:2px;background:#fff}
+.opt-card.on .radio{border:5px solid var(--primary)}
+.oc-body{display:flex;flex-direction:column;gap:3px}
+.oc-body b{font-weight:600}
+.oc-desc{font-size:13px;color:var(--muted)}
+.badge{align-self:flex-start;font-size:11.5px;font-weight:600;background:var(--tint);color:var(--primary-dark);padding:2px 10px;border-radius:999px;margin-top:6px}
+.has-err .opt-card{border-color:var(--err)}
+/* chips */
+.ta-wrap{display:flex;flex-direction:column;gap:8px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{all:unset;font-size:13px;padding:5px 12px;border:1px solid var(--field);border-radius:999px;cursor:pointer;background:#fff}
+.chip:hover{border-color:var(--primary)}
+.chip.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+.chip:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+/* checkbox */
+.check{position:relative;display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-size:14px}
+.check input{position:absolute;opacity:0;pointer-events:none}
+.box{flex:none;width:18px;height:18px;border:1.5px solid #a9a59d;border-radius:4px;margin-top:2px;display:grid;place-items:center;background:#fff}
+.check input:checked+.box{background:var(--primary);border-color:var(--primary)}
+.check input:checked+.box::after{content:"";width:5px;height:9px;border:solid #fff;border-width:0 2px 2px 0;transform:translateY(-1px) rotate(45deg)}
+.check input:focus-visible+.box{outline:2px solid var(--primary);outline-offset:2px}
+.has-err .check{color:var(--err)}
+.has-err .box{border-color:var(--err)}
+/* info */
+.info{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-radius:6px;background:#eef0f3;border-bottom:2px solid var(--primary);font-size:14px}
+.info.warn{background:var(--err-soft);border-bottom-color:var(--err)}
+.info-ic{flex:none;color:var(--primary);display:flex}
+.info.warn .info-ic{color:var(--err)}
+.info-ic svg{width:20px;height:20px}
+.info a{font-weight:600}
+/* repeater */
+.rep{display:flex;flex-direction:column;gap:14px}
+.rep-item{border:1px solid #e3e0d9;border-radius:8px;padding:18px;display:flex;flex-direction:column;gap:18px;background:var(--soft)}
+.rep-head{display:flex;justify-content:space-between;align-items:center}
+.link-btn{all:unset;color:var(--primary);font-weight:600;font-size:13px;cursor:pointer}
+.link-btn:hover{text-decoration:underline}
+.link-btn:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+/* buttons */
+.btn{font:inherit;cursor:pointer;border-radius:999px;font-weight:600;font-size:16px;padding:0 28px;height:48px;min-width:180px;transition:background .15s,color .15s}
+.btn:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+.btn-primary{background:var(--primary);color:#fff;border:0}
+.btn-primary:hover:not(:disabled){background:var(--primary-dark)}
+.btn-primary:disabled{background:#d5d8db;color:#f4f5f6;cursor:not-allowed}
+.btn-outline{background:#fff;color:var(--primary);border:1px solid var(--primary)}
+.btn-outline:hover{background:var(--primary-soft)}
+.btn-add{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;min-width:0;height:42px;font-size:14px;padding:0 18px;border:1px dashed #a9a59d;background:transparent;color:var(--primary-dark)}
+.btn-add:hover{border-color:var(--primary);background:#fff}
+.btn-add .ic svg{width:16px;height:16px}
+.nav{display:flex;justify-content:space-between;gap:16px;margin-top:32px}
+.nav.single{justify-content:center}
+/* rules */
+.rules-wrap{display:flex;flex-direction:column;gap:12px}
+.rules-box{height:320px;overflow-y:auto;border:1px solid #e3e0d9;border-radius:6px;padding:18px 20px;font-size:13.5px;background:var(--soft)}
+.rules-box:focus-visible{outline:2px solid var(--primary)}
+.rules-box h4{margin:16px 0 6px;font-size:14px}
+.rules-box h4:first-of-type{margin-top:4px}
+.rules-box p{margin:0 0 8px}
+.placeholder-note{background:#fff4ec;border:1px dashed var(--accent);padding:8px 10px;border-radius:6px;color:#8a3a14;font-size:12.5px;margin-bottom:12px}
+/* review */
+.review{display:flex;flex-direction:column;gap:14px}
+.rev-card{border:1px solid #e3e0d9;border-radius:8px;padding:18px 22px}
+.rev-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.rev-card dl{margin:0;display:flex;flex-direction:column;gap:6px}
+.rev-row{display:grid;grid-template-columns:minmax(120px,42%) 1fr;gap:12px;font-size:14px}
+.rev-row dt{color:var(--muted)}
+.rev-row dd{margin:0;overflow-wrap:anywhere}
+.rev-sub{font-weight:600;font-size:13px;margin-top:6px;padding-top:8px;border-top:1px dashed #e3e0d9}
+/* approval chain */
+.approval{display:flex;flex-direction:column;gap:10px}
+.chain{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.chain li{font-size:13px;font-weight:600;padding:6px 12px;border-radius:999px;background:var(--tint);color:var(--primary-dark)}
+.chain li.ends{background:#fff;border:1px solid var(--field);font-weight:500;color:var(--muted)}
+.chain li.arrow{background:none;padding:0;color:var(--muted);font-weight:400}
+/* footer */
+footer{border-top:1px solid #e3e0d9;background:#efebe4;padding:22px 40px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px 24px;font-size:13px;color:var(--muted)}
+/* dialog */
+dialog{border:0;border-radius:12px;padding:0;max-width:640px;width:calc(100% - 32px);box-shadow:0 24px 64px rgba(0,0,0,.25);color:var(--ink)}
+dialog::backdrop{background:rgba(30,35,40,.45)}
+.dlg-head{padding:24px 28px 0}
+.dlg-head h3{margin:0 0 6px;font-size:20px}
+.dlg-head p{margin:0;color:var(--muted);font-size:14px}
+dialog pre{margin:16px 28px;max-height:52vh;overflow:auto;background:#22272c;color:#e6e8ea;padding:16px;border-radius:8px;font-size:12.5px;line-height:1.5}
+dialog pre.pre-error{background:var(--err-soft);color:var(--err);white-space:pre-wrap}
+.dlg-head .ok-num{display:inline-block;margin-top:10px;font-size:22px;font-weight:700;letter-spacing:.02em;color:var(--primary-dark)}
+/* sign-in gate */
+.gate{text-align:center;padding:48px 40px}
+.gate p{color:var(--muted);margin:8px auto 24px;max-width:420px}
+.gate .btn{display:inline-flex;align-items:center;gap:10px}
+.gate .ms{width:18px;height:18px;display:grid;grid-template-columns:1fr 1fr;gap:2px}
+.gate .ms i{display:block}
+.user-box{display:flex;align-items:center;gap:12px;justify-content:flex-end;flex-wrap:wrap}
+.user-box .who{color:var(--ink);font-weight:600}
+.user-box button{all:unset;cursor:pointer;color:var(--primary);font-weight:600}
+.user-box button:hover{text-decoration:underline}
+.dlg-actions{display:flex;gap:10px;justify-content:flex-end;padding:0 28px 24px;flex-wrap:wrap}
+.dlg-actions .btn{min-width:0;font-size:14px;height:42px;padding:0 20px}
+/* mobile */
+@media (max-width:640px){
+  .topbar{padding:12px 16px;grid-template-columns:auto 1fr auto}
+  .back-txt,.top-right{display:none}
+  .back{font-size:18px}
+  main{padding:28px 16px 56px}
+  h1{font-size:26px}
+  .card{padding:24px 18px}
+  .card-title{font-size:20px}
+  .row{grid-template-columns:1fr}
+  .seg{grid-auto-flow:row}
+  .seg-btn{border-left:0;border-top:1px solid var(--field);justify-content:flex-start}
+  .seg-btn:first-child{border-top:0}
+  .st-lbl{font-size:11px}
+  .nav .btn{min-width:0;flex:1}
+  .rev-row{grid-template-columns:1fr;gap:0}
+  footer{padding:20px 16px}
+}
+
+/* ===== Status page (TKS-style list) ===== */
+main.wide{max-width:1200px}
+.list-layout{display:flex;gap:18px;align-items:flex-start}
+.list-main{flex:1;min-width:0}
+.filter-panel{width:220px;flex-shrink:0;background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto}
+.fgroup{margin-bottom:14px}
+.fgroup-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px}
+.fopt{display:flex;align-items:center;gap:8px;font-size:13px;padding:3px 0;cursor:pointer}
+.fopt input{width:16px;height:16px;accent-color:var(--primary);cursor:pointer;flex-shrink:0;margin:0}
+.fnote{font-size:12px;color:var(--muted)}
+.frange{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.frange label{display:grid;grid-template-columns:28px 1fr;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.frange input{font:inherit;font-size:12px;color:var(--ink);background:#fff;border:1px solid var(--field);border-radius:6px;padding:5px 7px;min-width:0}
+.msel{position:relative}
+.msel-btn{width:100%;text-align:left;font:inherit;font-size:13px;color:var(--ink);background:#fff;border:1px solid var(--field);border-radius:6px;padding:8px 10px;cursor:pointer}
+.msel-menu{display:none;position:absolute;top:100%;left:0;right:0;z-index:30;margin-top:4px;max-height:220px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px rgba(30,35,40,.12);padding:6px 10px}
+.msel.open .msel-menu{display:block}
+.fclear{width:100%;font:inherit;font-size:12px;font-weight:600;color:var(--muted);background:none;border:1px solid var(--field);border-radius:999px;padding:8px;cursor:pointer}
+.fclear:hover,.btn-refresh:hover{border-color:var(--primary);color:var(--primary)}
+.filter-toggle{display:none;width:100%;font:inherit;font-size:13px;font-weight:600;color:var(--primary);background:#fff;border:1px solid var(--line);border-radius:999px;padding:10px;cursor:pointer;margin-bottom:12px}
+.list-bar{display:flex;gap:10px;margin-bottom:8px}
+.list-bar input{flex:1;font:inherit;font-size:14px;height:42px;padding:0 14px;border:1px solid var(--field);border-radius:6px;background:#fff;color:var(--ink)}
+.list-bar input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(79,87,96,.15)}
+.btn-refresh{width:42px;height:42px;border-radius:6px;border:1px solid var(--field);background:#fff;color:var(--muted);font-size:18px;cursor:pointer;flex-shrink:0}
+.list-count{display:block;font-size:12px;color:var(--muted);text-align:right;margin-bottom:10px;min-height:16px}
+.list-msg{text-align:center;color:var(--muted);font-size:14px;padding:40px 0}
+.list-msg.err{color:var(--err)}
+/* record card */
+.rec{background:#fff;border:1px solid var(--line);border-left:4px solid var(--primary);border-radius:8px;padding:14px 18px;margin-bottom:10px}
+.rec.st-wait{border-left-color:#c58a12}
+.rec.st-ok{border-left-color:#2f7d4f}
+.rec.st-no{border-left-color:var(--err)}
+.rec.st-cancel{border-left-color:#a3a19b}
+.rec-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px}
+.rec-num{font-size:17px;font-weight:700;margin-right:4px;letter-spacing:.01em}
+.pill{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:3px 11px;white-space:nowrap}
+.pill.st-new{background:#e6e9ee;color:#3a4148}
+.pill.st-wait{background:#fbf0d6;color:#8a5d06}
+.pill.st-ok{background:#dcefe3;color:#24603d}
+.pill.st-no{background:var(--err-soft);color:var(--err)}
+.pill.st-cancel{background:#ecebe8;color:#6b6a66}
+.rec-name{font-size:15px;font-weight:600;margin-bottom:6px}
+.rec-type{display:inline-block;margin-left:10px;font-size:12px;font-weight:600;color:var(--primary-dark);background:var(--tint);border-radius:999px;padding:2px 10px;vertical-align:middle}
+.rec-meta{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;color:var(--muted);margin-bottom:10px}
+.rec-meta b{color:var(--ink);font-weight:600}
+.ap{list-style:none;margin:0 0 10px;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.ap li{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px 3px 4px;background:#f1efeb;color:var(--muted)}
+.ap-ic{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;background:#fff;border:1px solid var(--field)}
+.ap li.ap-ok{background:#dcefe3;color:#24603d}.ap li.ap-ok .ap-ic{background:#2f7d4f;border-color:#2f7d4f;color:#fff}
+.ap li.ap-no{background:var(--err-soft);color:var(--err)}.ap li.ap-no .ap-ic{background:var(--err);border-color:var(--err);color:#fff}
+.ap li.ap-cur{background:#fbf0d6;color:#8a5d06}.ap li.ap-cur .ap-ic{border-color:#c58a12;color:#8a5d06}
+.rec-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.rec-link{font-size:13px;font-weight:600;color:var(--primary-dark);text-decoration:none}
+.rec-link:hover{text-decoration:underline}
+.rec-link.muted{color:var(--muted);font-weight:500}
+.rec-btn{margin-left:auto;font:inherit;font-size:12px;font-weight:600;color:var(--primary);background:#fff;border:1px solid var(--primary);border-radius:999px;padding:5px 14px;cursor:pointer}
+.rec-btn:hover{background:var(--primary);color:#fff}
+.rec-details{margin-top:12px;padding-top:12px;border-top:1px dashed #e3e0d9}
+.rec-details dl{margin:0;display:grid;grid-template-columns:minmax(140px,30%) 1fr;gap:4px 14px;font-size:13px}
+.d-row{display:contents}
+.d-row dt{color:var(--muted)}
+.d-row dd{margin:0;overflow-wrap:anywhere}
+.d-sub{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:12px 0 4px}
+#gate .card{max-width:640px;margin:0 auto}
+@media (max-width:760px){
+  .list-layout{flex-direction:column}
+  .filter-panel{width:100%;position:static;display:none;max-height:none}
+  .filter-panel.open{display:block}
+  .filter-toggle{display:block}
+  .rec-details dl{grid-template-columns:1fr;gap:0}
+  .d-row dd{margin-bottom:6px}
+  .rec-btn{margin-left:0}
+}
+
+</style>
+</head>
+<body class="staff">
+<header class="topbar">
+  <a class="back" href="https://www.iremas.lt">&larr;<span class="back-txt"> Grįžti į iremas.lt</span></a>
+  <div class="brand"><span class="wm">IREMAS</span><span class="tag">Koncerno „Achemos grupė“ narė</span></div>
+  <div class="top-right"><a href="iremas-leidimai-darbuotojams.html">Naujas užsakymas &rarr;</a></div>
+</header>
+<main class="wide">
+  <div class="hero">
+    <span class="pill-hero pill">Iremas darbuotojams</span>
+    <h1>Užsakymų būsena</h1>
+    <p class="lead">Pateiktų leidimų užsakymų eiga ir tvirtinimas.</p>
+  </div>
+  <div id="gate"></div>
+  <div id="app" hidden>
+    <button class="filter-toggle" id="filterToggle" type="button">Filtrai</button>
+    <div class="list-layout">
+      <aside class="filter-panel" id="filterPanel" aria-label="Filtrai">
+        <div class="fgroup">
+          <div class="fgroup-title">Rodyti</div>
+          <label class="fopt"><input type="checkbox" id="f_mine" checked> Tik mano užsakymai</label>
+        </div>
+        <div class="fgroup">
+          <div class="fgroup-title">Būsena</div>
+          <label class="fopt"><input type="checkbox" data-g="status" value="Pateikta"> Pateikta</label>
+          <label class="fopt"><input type="checkbox" data-g="status" value="Tvirtinama"> Tvirtinama</label>
+          <label class="fopt"><input type="checkbox" data-g="status" value="Patvirtinta"> Patvirtinta</label>
+          <label class="fopt"><input type="checkbox" data-g="status" value="Atmesta"> Atmesta</label>
+          <label class="fopt"><input type="checkbox" data-g="status" value="Atšaukta"> Atšaukta</label>
+        </div>
+        <div class="fgroup">
+          <div class="fgroup-title">Leidimo tipas</div>
+          <label class="fopt"><input type="checkbox" data-g="type" value="Naujam darbuotojui"> Naujam darbuotojui</label>
+          <label class="fopt"><input type="checkbox" data-g="type" value="Nuomojamam arba UAB „Iremas“ transportui"> Nuomojamam / Iremas transportui</label>
+          <label class="fopt"><input type="checkbox" data-g="type" value="Darbuotojo asmeniniam transportui"> Asmeniniam transportui</label>
+        </div>
+        <div class="fgroup">
+          <div class="fgroup-title">Galiojimas</div>
+          <label class="fopt"><input type="checkbox" data-g="valid" value="active"> Galioja dabar</label>
+          <label class="fopt"><input type="checkbox" data-g="valid" value="soon"> Baigia galioti (14 d.)</label>
+          <label class="fopt"><input type="checkbox" data-g="valid" value="future"> Įsigalios vėliau</label>
+          <label class="fopt"><input type="checkbox" data-g="valid" value="expired"> Nebegalioja</label>
+        </div>
+        <div class="fgroup">
+          <div class="fgroup-title">Pateikta</div>
+          <label class="fopt"><input type="checkbox" data-g="date" value="today"> Šiandien</label>
+          <label class="fopt"><input type="checkbox" data-g="date" value="7"> Paskutinės 7 d.</label>
+          <label class="fopt"><input type="checkbox" data-g="date" value="30"> Paskutinės 30 d.</label>
+          <div class="frange">
+            <label>Nuo <input type="text" id="f_from" placeholder="YYYY-MM-DD" inputmode="numeric" maxlength="10" autocomplete="off"></label>
+            <label>Iki <input type="text" id="f_to" placeholder="YYYY-MM-DD" inputmode="numeric" maxlength="10" autocomplete="off"></label>
+          </div>
+        </div>
+        <div class="fgroup">
+          <div class="fgroup-title">Pateikė</div>
+          <div class="msel" id="userMsel">
+            <button type="button" class="msel-btn" id="userMselBtn">Visi pateikėjai ▾</button>
+            <div class="msel-menu" id="f_users"><div class="fnote">—</div></div>
+          </div>
+        </div>
+        <button class="fclear" id="btnClear" type="button">Išvalyti filtrus</button>
+      </aside>
+      <div class="list-main">
+        <div class="list-bar">
+          <input type="search" id="list_search" placeholder="Ieškoti (leidimo Nr., vardas, valst. Nr.…)" aria-label="Paieška">
+          <button class="btn-refresh" id="btnRefresh" type="button" title="Atnaujinti" aria-label="Atnaujinti">⟳</button>
+        </div>
+        <div class="list-count" id="list_count"></div>
+        <div id="list_container"><div class="list-msg">—</div></div>
+      </div>
+    </div>
+  </div>
+</main>
+<footer>
+  <span>UAB „Iremas“ · Jonava</span>
+  <span>Duomenys iš UAB „Iremas“ SharePoint</span>
+</footer>
+<script>
+/* =====================================================================
+   KONFIGŪRACIJA – bendra užsakymo formai ir būsenos puslapiui
+   (Client ID ir Tenant ID nėra slapti – juos galima laikyti GitHub'e)
+   ===================================================================== */
+const SP_CONFIG = {
+  tenantId: 'f300c84f-87f0-4d9e-8284-1e36dbe06fbe',                  // Entra ID → Directory (tenant) ID
+  clientId: '03dc6464-8653-43b1-83f0-99833ec01e3d',                  // App registration → Application (client) ID
+  siteUrl: 'https://achemosgrupelt.sharepoint.com/sites/IremasLeidimai',
+  listTitle: 'Leidimai_darbuotojams',
+  permitPrefix: 'LD',                                                // leidimo Nr.: LD-2026-0001
+  formVersion: 'staff-1.0'
+};
+/* ===================================================================== */
+
+/* Shared Microsoft sign-in (MSAL) + SharePoint REST helpers → window.SPC */
+window.SPC = (function () {
+  const configured = !/ČIA|TENANT\.sharepoint|SVETAINE/.test(SP_CONFIG.tenantId + SP_CONFIG.clientId + SP_CONFIG.siteUrl);
+
+  /* Lithuanian display names from the column spec – lets us find a column even if it was
+     imported from Excel (internal name field_N) or renamed to Lithuanian */
+  const DISPLAY = {
+    Title: 'Leidimo Nr.', PermitType: 'Leidimo tipas', RequestKind: 'Užsakymo tipas', Status: 'Būsena',
+    EmployeeFirstName: 'Vardas', EmployeeLastName: 'Pavardė', Position: 'Pareigos', TabelNo: 'Tabelio Nr.',
+    ContractDate: 'Sutarties sudarymo data', ContractTerm: 'Sutarties terminas', ContractEndDate: 'Sutarties pabaigos data',
+    VehicleOwnership: 'Transporto nuosavybė', Purpose: 'Tikslas', ReplacedPlate: 'Keičiamos TP valst. Nr.',
+    VehicleType: 'Transporto rūšis', VehicleMake: 'Markė', VehicleModel: 'Modelis', PlateNumber: 'Valstybinis Nr.',
+    ValidFrom: 'Galioja nuo', ValidTo: 'Galioja iki', DataConfirmed: 'Duomenys patvirtinti', ApprovalChain: 'Tvirtinimo seka',
+    Approval1Decision: '1 tvirtinimas (M. Petraitis) – sprendimas', Approval1Date: '1 tvirtinimas – data', Approval1Comment: '1 tvirtinimas – komentaras',
+    Approval2Decision: '2 tvirtinimas (E. Juzėnas) – sprendimas', Approval2Date: '2 tvirtinimas – data', Approval2Comment: '2 tvirtinimas – komentaras',
+    OfficeDecision: 'Leidimų biuras – sprendimas', OfficeDate: 'Leidimų biuras – data', OfficeComment: 'Leidimų biuras – komentaras',
+    PermitPdf: 'Leidimo PDF', PdfCreated: 'PDF sukurtas',
+    FormVersion: 'Formos versija', PayloadJson: 'Formos duomenys (JSON)'
+  };
+
+  const api = { configured, config: SP_CONFIG, DISPLAY, account: null };
+  if (!configured) return api;
+
+  const spOrigin = new URL(SP_CONFIG.siteUrl).origin;
+  const SCOPES = [spOrigin + '/AllSites.Write'];
+  const pca = new msal.PublicClientApplication({
+    auth: {
+      clientId: SP_CONFIG.clientId,
+      authority: 'https://login.microsoftonline.com/' + SP_CONFIG.tenantId,
+      redirectUri: location.origin + location.pathname
+    },
+    cache: { cacheLocation: 'sessionStorage' }
+  });
+
+  async function getToken() {
+    try {
+      return (await pca.acquireTokenSilent({ scopes: SCOPES, account: api.account })).accessToken;
+    } catch (e) {
+      // only called from user actions or right after sign-in, so a popup is allowed and page state is kept
+      return (await pca.acquireTokenPopup({ scopes: SCOPES, account: api.account })).accessToken;
+    }
+  }
+
+  async function sp(url, method, body, extraHeaders) {
+    const res = await fetch(url, {
+      method: method || 'GET',
+      headers: Object.assign({
+        Authorization: 'Bearer ' + (await getToken()),
+        Accept: 'application/json;odata=nometadata',
+        'Content-Type': 'application/json;odata=nometadata'
+      }, extraHeaders || {}),
+      body: body ? JSON.stringify(body) : undefined
+    });
+    if (!res.ok) {
+      let msg = res.status + ' ' + res.statusText;
+      try { const j = await res.json(); msg += ' – ' + ((j['odata.error'] && j['odata.error'].message.value) || (j.error && j.error.message) || ''); } catch (_) {}
+      throw new Error(msg);
+    }
+    return res.status === 204 ? null : res.json();
+  }
+
+  const listUrl = SP_CONFIG.siteUrl.replace(/\/$/, '') + "/_api/web/lists/getbytitle('" +
+    encodeURIComponent(SP_CONFIG.listTitle.replace(/'/g, "''")) + "')";
+
+  let fieldMap = null;
+  async function loadFields() {
+    if (fieldMap) return fieldMap;
+    const r = await sp(listUrl + '/fields?$select=Title,InternalName,EntityPropertyName,TypeAsString,ReadOnlyField,Hidden');
+    const fields = (r.value || []).filter(f => !f.ReadOnlyField && !f.Hidden);
+    const norm = x => String(x || '').trim().toLowerCase();
+    fieldMap = {};
+    Object.keys(DISPLAY).forEach(key => {
+      const f = fields.find(f => f.InternalName === key) ||
+                fields.find(f => f.EntityPropertyName === key) ||
+                fields.find(f => norm(f.Title) === norm(key)) ||
+                fields.find(f => norm(f.Title) === norm(DISPLAY[key]));
+      if (f) fieldMap[key] = f;
+    });
+    console.log('SharePoint column map', Object.fromEntries(Object.entries(fieldMap).map(([k, f]) => [k, f.EntityPropertyName + ' (' + f.TypeAsString + ')'])));
+    return fieldMap;
+  }
+
+  /* Sign-in gate: shows a card in `root` until the user is signed in, then calls onReady() */
+  async function gate(root, intro, onReady) {
+    root.replaceChildren(gateCard('Jungiamasi…', 'Tikrinamas prisijungimas.'));
+    try {
+      await pca.initialize();
+      const r = await pca.handleRedirectPromise();
+      api.account = (r && r.account) || pca.getActiveAccount() || pca.getAllAccounts()[0] || null;
+    } catch (e) {
+      console.error(e);
+      root.replaceChildren(gateCard('Prisijungti nepavyko', String(e.message || e), 'Bandyti dar kartą', false, () => location.reload()));
+      return;
+    }
+    if (!api.account) {
+      root.replaceChildren(gateCard('Prisijunkite', intro, 'Prisijungti su Microsoft paskyra', true,
+        () => pca.loginRedirect({ scopes: SCOPES, prompt: 'select_account' })));
+      return;
+    }
+    pca.setActiveAccount(api.account);
+    showUser();
+    onReady();
+  }
+
+  function showUser() {
+    const box = document.querySelector('.top-right');
+    const out = document.createElement('button');
+    out.type = 'button'; out.textContent = 'Atsijungti';
+    out.onclick = () => pca.logoutRedirect({ account: api.account, postLogoutRedirectUri: location.origin + location.pathname });
+    const who = document.createElement('span');
+    who.className = 'who'; who.textContent = api.account.name || api.account.username;
+    const wrap = document.createElement('div'); wrap.className = 'user-box';
+    const extra = box.querySelector('a');           // keep the page's own link (e.g. "Būsena →")
+    if (extra) wrap.append(extra);
+    wrap.append(who, out);
+    box.replaceChildren(wrap);
+    box.style.display = 'block';
+  }
+
+  return Object.assign(api, { sp, getToken, listUrl, itemsUrl: listUrl + '/items', loadFields, gate });
+})();
+
+function gateCard(title, text, btnText, msLogo, onClick) {
+  const card = document.createElement('section');
+  card.className = 'card gate';
+  card.innerHTML = '<h2 class="card-title"></h2><p></p>';
+  card.querySelector('h2').textContent = title;
+  card.querySelector('p').textContent = text;
+  if (btnText) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn btn-primary';
+    if (msLogo) b.innerHTML = '<span class="ms"><i style="background:#f25022"></i><i style="background:#7fba00"></i><i style="background:#00a4ef"></i><i style="background:#ffb900"></i></span>';
+    b.append(btnText);
+    b.onclick = onClick;
+    card.append(b);
+  }
+  return card;
+}
+
+</script>
+<script>
+/* Užsakymų būsena – list of permit requests with filters + search (TKS-style). Uses window.SPC. */
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const pad = n => String(n).padStart(2, '0');
+  const ymd = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  const fmtDate = v => (v ? ymd(new Date(v)) : '');
+  const fmtDT = v => { if (!v) return ''; const d = new Date(v); return ymd(d) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+  const todayStr = () => ymd(new Date());
+
+  const STATUS_CLS = { 'Pateikta': 'st-new', 'Tvirtinama': 'st-wait', 'Patvirtinta': 'st-ok', 'Atmesta': 'st-no', 'Atšaukta': 'st-cancel' };
+  const OFFICE = 'Leidimų biuras';
+  const SPLIT = /[\s\-\/_.,;:()„“"]+/;
+
+  let all = [], lastUpdated = null, me = '';
+  const open = new Set();          // ids of expanded cards (kept across refreshes)
+
+  /* ---------- data ---------- */
+  async function load(first) {
+    const cont = $('list_container');
+    if (first) cont.innerHTML = '<div class="list-msg">Kraunama…</div>';
+    try {
+      const map = await SPC.loadFields();
+      let url = SPC.itemsUrl + '?$select=*,Author/Title,Author/EMail&$expand=Author&$orderby=Created desc&$top=500';
+      const items = [];
+      while (url) {
+        const r = await SPC.sp(url);
+        items.push(...(r.value || []));
+        url = r['odata.nextLink'] || null;
+      }
+      const get = (it, key) => (map[key] ? it[map[key].EntityPropertyName] : undefined);
+      all = items.map(it => {
+        const r = { id: it.Id || it.ID, created: it.Created, by: (it.Author && it.Author.Title) || '', byEmail: ((it.Author && it.Author.EMail) || '').toLowerCase() };
+        Object.keys(SPC.DISPLAY).forEach(k => { r[k] = get(it, k); });
+        const pdf = r.PermitPdf;
+        r.pdfUrl = pdf && typeof pdf === 'object' ? pdf.Url : (typeof pdf === 'string' && /^https?:/.test(pdf) ? pdf.split(',')[0] : '');
+        r.name = [r.EmployeeFirstName, r.EmployeeLastName].filter(Boolean).join(' ');
+        r.status = r.Status || 'Pateikta';
+        return r;
+      });
+      lastUpdated = new Date();
+      populateUsers();
+      const y = window.scrollY;
+      apply();
+      window.scrollTo(0, y);
+    } catch (e) {
+      console.error(e);
+      if (first || !all.length) cont.innerHTML = '<div class="list-msg err">Nepavyko įkelti užsakymų: ' + esc(e.message) + '</div>';
+    }
+  }
+
+  /* ---------- filters ---------- */
+  const checked = g => [...document.querySelectorAll('.filter-panel input[data-g="' + g + '"]:checked')].map(el => el.value);
+
+  function validity(r) {
+    if (!r.ValidFrom && !r.ValidTo) return '';
+    const t = todayStr(), from = fmtDate(r.ValidFrom), to = fmtDate(r.ValidTo);
+    if (to && to < t) return 'expired';
+    if (from && from > t) return 'future';
+    const soon = ymd(new Date(Date.now() + 14 * 864e5));
+    return to && to <= soon ? 'soon' : 'active';
+  }
+
+  function apply() {
+    const q = $('list_search').value.trim().toLowerCase();
+    const mine = $('f_mine').checked;
+    const st = checked('status'), tp = checked('type'), val = checked('valid'), dt = checked('date'), users = checked('user');
+    const ok = v => /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
+    const from = ok($('f_from').value), to = ok($('f_to').value);
+    const now = new Date();
+    const list = all.filter(r => {
+      if (mine && me && r.byEmail !== me) return false;
+      if (st.length && !st.includes(r.status)) return false;
+      if (tp.length && !tp.includes(r.PermitType)) return false;
+      if (users.length && !users.includes(r.by)) return false;
+      if (val.length && !val.some(v => v === validity(r) || (v === 'active' && validity(r) === 'soon'))) return false;
+      if (dt.length) {
+        const d = new Date(r.created);
+        if (!dt.some(v => v === 'today' ? d.toDateString() === now.toDateString() : d >= new Date(now - Number(v) * 864e5))) return false;
+      }
+      if (from && new Date(r.created) < new Date(from + 'T00:00:00')) return false;
+      if (to && new Date(r.created) > new Date(to + 'T23:59:59')) return false;
+      if (q) {
+        const text = [r.Title, r.name, r.Position, r.TabelNo, r.PlateNumber, r.ReplacedPlate, r.VehicleMake, r.VehicleModel,
+          r.VehicleType, r.PermitType, r.status, r.Purpose, r.by].join(' ').toLowerCase();
+        // whole tokens (LD-2026-0010) and their parts (ld, 2026, 0010) both match by prefix
+        const words = text.split(/\s+/).concat(text.split(SPLIT)).filter(Boolean);
+        if (!q.split(/\s+/).filter(Boolean).every(t => words.some(w => w.startsWith(t)))) return false;
+      }
+      return true;
+    });
+    render(list);
+    const n = st.length + tp.length + val.length + dt.length + users.length + ((from || to) ? 1 : 0) + (mine ? 0 : 1);
+    $('filterToggle').textContent = n ? 'Filtrai (' + n + ')' : 'Filtrai';
+    updateUserBtn();
+  }
+
+  function clearFilters() {
+    document.querySelectorAll('.filter-panel input[type=checkbox]').forEach(c => { c.checked = c.id === 'f_mine'; });
+    $('list_search').value = '';
+    ['f_from', 'f_to'].forEach(id => { const i = $(id); if (i._flatpickr) i._flatpickr.clear(false); i.value = ''; });
+    apply();
+  }
+
+  function populateUsers() {
+    const box = $('f_users');
+    const prev = new Set(checked('user'));
+    const users = [...new Set(all.map(r => r.by).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'lt'));
+    box.innerHTML = users.length
+      ? users.map(u => '<label class="fopt"><input type="checkbox" data-g="user" value="' + esc(u) + '"' + (prev.has(u) ? ' checked' : '') + '> ' + esc(u) + '</label>').join('')
+      : '<div class="fnote">—</div>';
+  }
+  function updateUserBtn() {
+    const n = checked('user').length;
+    $('userMselBtn').textContent = (n ? 'Pateikė (' + n + ')' : 'Visi pateikėjai') + ' ▾';
+  }
+
+  /* ---------- rendering ---------- */
+  function approvalSteps(r) {
+    const chain = String(r.ApprovalChain || (r.PermitType === 'Naujam darbuotojui' ? OFFICE : 'M. Petraitis → E. Juzėnas → ' + OFFICE))
+      .split('→').map(s => s.trim()).filter(Boolean);
+    let n = 0, blocked = false, currentSet = false;
+    return chain.map(name => {
+      const k = name === OFFICE ? 'Office' : 'Approval' + (++n);
+      const dec = r[k + 'Decision'], date = r[k + 'Date'], com = r[k + 'Comment'];
+      let state = dec === 'Patvirtinta' ? 'ok' : dec === 'Atmesta' ? 'no' : 'todo';
+      if (state === 'todo' && !blocked && !currentSet && !['Atmesta', 'Atšaukta'].includes(r.status)) { state = 'cur'; currentSet = true; }
+      if (state === 'no') blocked = true;
+      return { name, state, date, com };
+    });
+  }
+
+  function render(list) {
+    const cont = $('list_container');
+    $('list_count').textContent = (list.length ? list.length + ' įr.' : '') +
+      (lastUpdated ? (list.length ? ' · ' : '') + 'atnaujinta ' + lastUpdated.toLocaleTimeString('lt-LT') : '');
+    if (!list.length) {
+      cont.innerHTML = '<div class="list-msg">' + (all.length ? 'Pagal pasirinktus filtrus užsakymų nerasta.' : 'Užsakymų dar nėra.') + '</div>';
+      return;
+    }
+    cont.innerHTML = list.map(r => {
+      const steps = approvalSteps(r);
+      const v = validity(r);
+      const vPill = r.status === 'Patvirtinta' && v === 'expired' ? '<span class="pill st-cancel">Nebegalioja</span>'
+        : r.status === 'Patvirtinta' && v === 'soon' ? '<span class="pill st-wait">Baigia galioti</span>' : '';
+      const vehicle = [r.PlateNumber && '<b>' + esc(r.PlateNumber) + '</b>', [r.VehicleMake, r.VehicleModel].filter(Boolean).map(esc).join(' '), r.VehicleType && esc(r.VehicleType)].filter(Boolean).join(' · ');
+      const valid = (r.ValidFrom || r.ValidTo) ? 'Galioja: <b>' + fmtDate(r.ValidFrom) + ' – ' + fmtDate(r.ValidTo) + '</b>' : '';
+      const meta = [
+        r.Position && esc(r.Position),
+        vehicle,
+        valid,
+        r.RequestKind === 'Transporto pakeitimas' && r.ReplacedPlate ? 'Keičia: ' + esc(r.ReplacedPlate) : '',
+        [fmtDate(r.created), r.by].filter(Boolean).map(esc).join(' · ')
+      ].filter(Boolean);
+      const chain = '<ol class="ap">' + steps.map(s =>
+        '<li class="ap-' + s.state + '" title="' + esc(s.name + (s.date ? ' · ' + fmtDT(s.date) : '')) + '">' +
+        '<span class="ap-ic">' + (s.state === 'ok' ? '✓' : s.state === 'no' ? '✕' : s.state === 'cur' ? '…' : '') + '</span>' + esc(s.name) + '</li>').join('') + '</ol>';
+      const pdf = r.pdfUrl
+        ? '<a class="rec-link" href="' + esc(r.pdfUrl) + '" target="_blank" rel="noopener">📄 Atidaryti leidimą (PDF)</a>'
+        : '<span class="rec-link muted">PDF dar nesukurtas</span>';
+      const isOpen = open.has(r.id);
+      return '<article class="rec ' + (STATUS_CLS[r.status] || 'st-new') + '">' +
+        '<div class="rec-top"><div class="rec-num">' + esc(r.Title || '(be numerio)') + '</div>' +
+        '<span class="pill ' + (STATUS_CLS[r.status] || 'st-new') + '">' + esc(r.status) + '</span>' + vPill + '</div>' +
+        '<div class="rec-name">' + esc(r.name || '—') + '<span class="rec-type">' + esc(r.PermitType || '') + '</span></div>' +
+        '<div class="rec-meta">' + meta.map(m => '<span>' + m + '</span>').join('') + '</div>' +
+        chain +
+        '<div class="rec-actions">' + pdf +
+        '<button type="button" class="rec-btn" data-toggle="' + r.id + '" aria-expanded="' + isOpen + '">' + (isOpen ? 'Mažiau ▴' : 'Daugiau ▾') + '</button></div>' +
+        (isOpen ? details(r, steps) : '') +
+        '</article>';
+    }).join('');
+  }
+
+  function details(r, steps) {
+    const row = (k, v) => (v ? '<div class="d-row"><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>' : '');
+    const ap = steps.map(s => row(s.name,
+      (s.state === 'ok' ? 'Patvirtinta' : s.state === 'no' ? 'Atmesta' : s.state === 'cur' ? 'Laukiama sprendimo' : 'Laukia eilės') +
+      (s.date ? ' · ' + fmtDT(s.date) : '') + (s.com ? ' – „' + s.com + '“' : ''))).join('');
+    return '<div class="rec-details"><dl>' +
+      row('Leidimo tipas', r.PermitType) + row('Užsakymo tipas', r.RequestKind) + row('Vardas, pavardė', r.name) +
+      row('Pareigos', r.Position) + row('Tabelio Nr.', r.TabelNo) + row('Sutarties sudarymo data', fmtDate(r.ContractDate)) +
+      row('Sutarties terminas', r.ContractTerm) + row('Sutarties pabaigos data', fmtDate(r.ContractEndDate)) +
+      row('Transporto nuosavybė', r.VehicleOwnership) + row('Tikslas', r.Purpose) + row('Transporto rūšis', r.VehicleType) +
+      row('Markė, modelis', [r.VehicleMake, r.VehicleModel].filter(Boolean).join(' ')) + row('Valstybinis Nr.', r.PlateNumber) +
+      row('Keičiamas valst. Nr.', r.ReplacedPlate) + row('Galioja nuo', fmtDate(r.ValidFrom)) + row('Galioja iki', fmtDate(r.ValidTo)) +
+      row('Pateikė', r.by) + row('Pateikta', fmtDT(r.created)) + row('PDF sukurtas', fmtDT(r.PdfCreated)) +
+      '</dl><div class="d-sub">Tvirtinimas</div><dl>' + ap + '</dl></div>';
+  }
+
+  /* ---------- wiring ---------- */
+  function wire() {
+    document.querySelector('.filter-panel').addEventListener('change', apply);
+    $('list_search').addEventListener('input', apply);
+    // date range: always YYYY-MM-DD, Lithuanian calendar, typing digits auto-inserts dashes
+    ['f_from', 'f_to'].forEach(id => {
+      const i = $(id);
+      i.addEventListener('input', () => {
+        const d = i.value.replace(/\D/g, '').slice(0, 8);
+        i.value = d.length > 6 ? d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6) : d.length > 4 ? d.slice(0, 4) + '-' + d.slice(4) : d;
+        if (i._flatpickr && d.length === 8) { i._flatpickr.setDate(i.value, false); i._flatpickr.close(); }
+        apply();
+      });
+      if (window.flatpickr) window.flatpickr(i, { dateFormat: 'Y-m-d', allowInput: true, disableMobile: true,
+        locale: (flatpickr.l10ns && flatpickr.l10ns.lt) || 'default', onChange: () => apply() });
+    });
+    $('btnRefresh').addEventListener('click', () => load(false));
+    $('btnClear').addEventListener('click', clearFilters);
+    $('filterToggle').addEventListener('click', () => $('filterPanel').classList.toggle('open'));
+    $('userMselBtn').addEventListener('click', e => { e.stopPropagation(); $('userMsel').classList.toggle('open'); });
+    document.addEventListener('click', e => { const m = $('userMsel'); if (m && !m.contains(e.target)) m.classList.remove('open'); });
+    $('list_container').addEventListener('click', e => {
+      const b = e.target.closest('[data-toggle]');
+      if (!b) return;
+      const id = Number(b.dataset.toggle);
+      open.has(id) ? open.delete(id) : open.add(id);
+      apply();
+    });
+    // background refresh every 60 s while the tab is visible
+    setInterval(() => { if (document.visibilityState === 'visible') load(false); }, 60000);
+  }
+
+  function start() {
+    $('app').hidden = false;
+    me = ((SPC.account && SPC.account.username) || '').toLowerCase();
+    wire();
+    load(true);
+  }
+
+  const gateRoot = $('gate');
+  if (!SPC.configured) {
+    gateRoot.replaceChildren(gateCard('Puslapis dar nesukonfigūruotas', 'Faile sp-common (SP_CONFIG) įrašykite Tenant ID, Client ID ir SharePoint svetainės adresą.'));
+    return;
+  }
+  SPC.gate(gateRoot, 'Užsakymų būsenos peržiūra skirta UAB „Iremas“ darbuotojams. Prisijunkite su savo darbo Microsoft paskyra.',
+    () => { gateRoot.replaceChildren(); start(); });
+})();
+
+</script>
+</body>
+</html>
