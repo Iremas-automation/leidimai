@@ -269,8 +269,9 @@ window.FU = (function () {
   const pastDate = v => (v >= today() ? 'Gimimo data turi būti praeityje.' : v < '1900-01-01' ? 'Neteisinga data.' : null);
 
   /* Approval chains (Tvirtinimo seka) – not shown in the UI, only sent in the payload for the backend. */
-  const CHAIN_FULL = ['M. Petraitis', 'E. Juzėnas', 'Leidimų biuras'];
-  const CHAIN_OFFICE = ['Leidimų biuras'];
+  // every request first goes to the office administrator (Pateikta → Tvirtinama / Atšaukta)
+  const CHAIN_FULL = ['Administratorė', 'M. Petraitis', 'E. Juzėnas', 'Leidimų biuras'];
+  const CHAIN_OFFICE = ['Administratorė', 'Leidimų biuras'];
 
   /* Transporto rūšys pasirinkimuose */
   const VEHICLE_TYPES = [
@@ -406,7 +407,10 @@ const SP_CONFIG = {
   siteUrl: 'https://achemosgrupelt.sharepoint.com/sites/IremasLeidimai',
   listTitle: 'Leidimai_darbuotojams',
   permitPrefix: 'LD',                                                // leidimo Nr.: LD-2026-0001
-  formVersion: 'staff-1.0'
+  formVersion: 'staff-1.1',
+  // Biuro administratorė(s): mato visus užsakymus ir gali „Priimti“ (→ Tvirtinama) arba „Atšaukti“ (→ Atšaukta).
+  // Įrašykite darbo el. pašto adresus (mažosiomis ar didžiosiomis – nesvarbu).
+  adminEmails: ['ADMINISTRATORE@iremas.lt']
 };
 /* ===================================================================== */
 
@@ -425,12 +429,15 @@ window.SPC = (function () {
     ValidFrom: 'Galioja nuo', ValidTo: 'Galioja iki', DataConfirmed: 'Duomenys patvirtinti', ApprovalChain: 'Tvirtinimo seka',
     Approval1Decision: '1 tvirtinimas (M. Petraitis) – sprendimas', Approval1Date: '1 tvirtinimas – data', Approval1Comment: '1 tvirtinimas – komentaras',
     Approval2Decision: '2 tvirtinimas (E. Juzėnas) – sprendimas', Approval2Date: '2 tvirtinimas – data', Approval2Comment: '2 tvirtinimas – komentaras',
+    AdminDecision: 'Administratorė – sprendimas', AdminDate: 'Administratorė – data', AdminComment: 'Administratorė – komentaras', AdminBy: 'Administratorė – kas sprendė',
     OfficeDecision: 'Leidimų biuras – sprendimas', OfficeDate: 'Leidimų biuras – data', OfficeComment: 'Leidimų biuras – komentaras',
     PermitPdf: 'Leidimo PDF', PdfCreated: 'PDF sukurtas',
     FormVersion: 'Formos versija', PayloadJson: 'Formos duomenys (JSON)'
   };
 
   const api = { configured, config: SP_CONFIG, DISPLAY, account: null };
+  api.isAdmin = () => !!api.account && (SP_CONFIG.adminEmails || [])
+    .map(e => String(e).trim().toLowerCase()).includes(String(api.account.username || '').toLowerCase());
   if (!configured) return api;
 
   const spOrigin = new URL(SP_CONFIG.siteUrl).origin;
@@ -636,7 +643,7 @@ function gateCard(title, text, btnText, msLogo, onClick) {
     if (missing.length) console.warn('Columns not found in the list (not saved):', missing);
     return {
       title: 'Užsakymas pateiktas',
-      html: 'Leidimo užsakymas užregistruotas ir perduotas tvirtinti.<br><span class="ok-num">' + num + '</span>' +
+      html: 'Leidimo užsakymas užregistruotas. Pirmiausia jį peržiūrės biuro administratorė.<br><span class="ok-num">' + num + '</span>' +
         '<br><a href="iremas-leidimai-busena.html">Peržiūrėti užsakymų būseną →</a>' +
         (missing.length ? '<br><small style="color:#8a3a14">Administratoriui: sąraše nerasti stulpeliai, jų reikšmės neišsaugotos – ' + missing.join(', ') + '.</small>' : '')
     };
