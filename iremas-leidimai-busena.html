@@ -300,6 +300,21 @@ main.wide{max-width:1200px}
   .rec-btn{margin-left:0}
 }
 
+/* administrator actions */
+.adm-actions{display:inline-flex;gap:8px;margin-left:auto}
+.adm-actions + .rec-btn{margin-left:0}
+.rec-btn.adm-ok{background:var(--primary);color:#fff;border-color:var(--primary)}
+.rec-btn.adm-ok:hover{background:var(--primary-dark)}
+.rec-btn.adm-no{color:var(--err);border-color:var(--err)}
+.rec-btn.adm-no:hover{background:var(--err);color:#fff}
+.act-body{padding:16px 28px 8px;display:flex;flex-direction:column;gap:6px}
+.btn-danger{background:var(--err);color:#fff;border:0}
+.btn-danger:hover:not(:disabled){background:#9d1f2f}
+.btn-danger:disabled{opacity:.6;cursor:not-allowed}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;font-size:14px;font-weight:600;padding:10px 18px;border-radius:999px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:500}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+@media (max-width:760px){.adm-actions{margin-left:0;width:100%}.adm-actions .rec-btn{flex:1}}
+
 </style>
 </head>
 <body class="staff">
@@ -319,6 +334,10 @@ main.wide{max-width:1200px}
     <button class="filter-toggle" id="filterToggle" type="button">Filtrai</button>
     <div class="list-layout">
       <aside class="filter-panel" id="filterPanel" aria-label="Filtrai">
+        <div class="fgroup" id="adminGroup" hidden>
+          <div class="fgroup-title">Administratorė</div>
+          <label class="fopt"><input type="checkbox" id="f_todo"> Laukia mano sprendimo</label>
+        </div>
         <div class="fgroup">
           <div class="fgroup-title">Rodyti</div>
           <label class="fopt"><input type="checkbox" id="f_mine" checked> Tik mano užsakymai</label>
@@ -374,6 +393,22 @@ main.wide{max-width:1200px}
     </div>
   </div>
 </main>
+<dialog id="actDlg" aria-labelledby="actTitle">
+  <div class="dlg-head">
+    <h3 id="actTitle"></h3>
+    <p id="actText"></p>
+  </div>
+  <div class="act-body">
+    <label class="lbl" for="actComment" id="actLbl"></label>
+    <textarea id="actComment" class="input" rows="3"></textarea>
+    <div class="err-msg" id="actErr" role="alert"></div>
+  </div>
+  <div class="dlg-actions">
+    <button type="button" class="btn btn-outline" id="actBack">Atgal</button>
+    <button type="button" class="btn btn-primary" id="actGo"></button>
+  </div>
+</dialog>
+<div class="toast" id="toast" role="status"></div>
 <footer>
   <span>UAB „Iremas“ · Jonava</span>
   <span>Duomenys iš UAB „Iremas“ SharePoint</span>
@@ -389,7 +424,10 @@ const SP_CONFIG = {
   siteUrl: 'https://achemosgrupelt.sharepoint.com/sites/IremasLeidimai',
   listTitle: 'Leidimai_darbuotojams',
   permitPrefix: 'LD',                                                // leidimo Nr.: LD-2026-0001
-  formVersion: 'staff-1.0'
+  formVersion: 'staff-1.1',
+  // Biuro administratorė(s): mato visus užsakymus ir gali „Priimti“ (→ Tvirtinama) arba „Atšaukti“ (→ Atšaukta).
+  // Įrašykite darbo el. pašto adresus (mažosiomis ar didžiosiomis – nesvarbu).
+  adminEmails: ['ADMINISTRATORE@iremas.lt']
 };
 /* ===================================================================== */
 
@@ -408,12 +446,15 @@ window.SPC = (function () {
     ValidFrom: 'Galioja nuo', ValidTo: 'Galioja iki', DataConfirmed: 'Duomenys patvirtinti', ApprovalChain: 'Tvirtinimo seka',
     Approval1Decision: '1 tvirtinimas (M. Petraitis) – sprendimas', Approval1Date: '1 tvirtinimas – data', Approval1Comment: '1 tvirtinimas – komentaras',
     Approval2Decision: '2 tvirtinimas (E. Juzėnas) – sprendimas', Approval2Date: '2 tvirtinimas – data', Approval2Comment: '2 tvirtinimas – komentaras',
+    AdminDecision: 'Administratorė – sprendimas', AdminDate: 'Administratorė – data', AdminComment: 'Administratorė – komentaras', AdminBy: 'Administratorė – kas sprendė',
     OfficeDecision: 'Leidimų biuras – sprendimas', OfficeDate: 'Leidimų biuras – data', OfficeComment: 'Leidimų biuras – komentaras',
     PermitPdf: 'Leidimo PDF', PdfCreated: 'PDF sukurtas',
     FormVersion: 'Formos versija', PayloadJson: 'Formos duomenys (JSON)'
   };
 
   const api = { configured, config: SP_CONFIG, DISPLAY, account: null };
+  api.isAdmin = () => !!api.account && (SP_CONFIG.adminEmails || [])
+    .map(e => String(e).trim().toLowerCase()).includes(String(api.account.username || '').toLowerCase());
   if (!configured) return api;
 
   const spOrigin = new URL(SP_CONFIG.siteUrl).origin;
@@ -546,11 +587,11 @@ function gateCard(title, text, btnText, msLogo, onClick) {
   const todayStr = () => ymd(new Date());
 
   const STATUS_CLS = { 'Pateikta': 'st-new', 'Tvirtinama': 'st-wait', 'Patvirtinta': 'st-ok', 'Atmesta': 'st-no', 'Atšaukta': 'st-cancel' };
-  const OFFICE = 'Leidimų biuras';
+  const OFFICE = 'Leidimų biuras', ADMIN = 'Administratorė';
   // lower-case + strip Lithuanian accents, so "onaite" finds "Onaitė" and "skod" finds "Škoda"
   const fold = s => String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-  let all = [], lastUpdated = null, me = '';
+  let all = [], lastUpdated = null, me = '', isAdmin = false;
   const open = new Set();          // ids of expanded cards (kept across refreshes)
 
   /* ---------- data ---------- */
@@ -608,6 +649,7 @@ function gateCard(title, text, btnText, msLogo, onClick) {
     const now = new Date();
     const list = all.filter(r => {
       if (mine && me && r.byEmail !== me) return false;
+      if (isAdmin && $('f_todo').checked && r.status !== 'Pateikta') return false;
       if (st.length && !st.includes(r.status)) return false;
       if (tp.length && !tp.includes(r.PermitType)) return false;
       if (users.length && !users.includes(r.by)) return false;
@@ -627,13 +669,13 @@ function gateCard(title, text, btnText, msLogo, onClick) {
       return true;
     });
     render(list);
-    const n = st.length + tp.length + val.length + dt.length + users.length + ((from || to) ? 1 : 0) + (mine ? 0 : 1);
+    const n = st.length + tp.length + val.length + dt.length + users.length + ((from || to) ? 1 : 0) + (mine ? 1 : 0) + (isAdmin && $('f_todo').checked ? 1 : 0);
     $('filterToggle').textContent = n ? 'Filtrai (' + n + ')' : 'Filtrai';
     updateUserBtn();
   }
 
   function clearFilters() {
-    document.querySelectorAll('.filter-panel input[type=checkbox]').forEach(c => { c.checked = c.id === 'f_mine'; });
+    document.querySelectorAll('.filter-panel input[type=checkbox]').forEach(c => { c.checked = isAdmin ? c.id === 'f_todo' : c.id === 'f_mine'; });
     $('list_search').value = '';
     ['f_from', 'f_to'].forEach(id => { const i = $(id); if (i._flatpickr) i._flatpickr.clear(false); i.value = ''; });
     apply();
@@ -654,11 +696,11 @@ function gateCard(title, text, btnText, msLogo, onClick) {
 
   /* ---------- rendering ---------- */
   function approvalSteps(r) {
-    const chain = String(r.ApprovalChain || (r.PermitType === 'Naujam darbuotojui' ? OFFICE : 'M. Petraitis → E. Juzėnas → ' + OFFICE))
+    const chain = String(r.ApprovalChain || (r.PermitType === 'Naujam darbuotojui' ? ADMIN + ' → ' + OFFICE : ADMIN + ' → M. Petraitis → E. Juzėnas → ' + OFFICE))
       .split('→').map(s => s.trim()).filter(Boolean);
     let n = 0, blocked = false, currentSet = false;
     return chain.map(name => {
-      const k = name === OFFICE ? 'Office' : 'Approval' + (++n);
+      const k = name === OFFICE ? 'Office' : name === ADMIN ? 'Admin' : 'Approval' + (++n);
       const dec = r[k + 'Decision'], date = r[k + 'Date'], com = r[k + 'Comment'];
       let state = dec === 'Patvirtinta' ? 'ok' : dec === 'Atmesta' ? 'no' : 'todo';
       if (state === 'todo' && !blocked && !currentSet && !['Atmesta', 'Atšaukta'].includes(r.status)) { state = 'cur'; currentSet = true; }
@@ -703,6 +745,10 @@ function gateCard(title, text, btnText, msLogo, onClick) {
         '<div class="rec-meta">' + meta.map(m => '<span>' + m + '</span>').join('') + '</div>' +
         chain +
         '<div class="rec-actions">' + pdf +
+        (isAdmin && r.status === 'Pateikta'
+          ? '<span class="adm-actions"><button type="button" class="rec-btn adm-ok" data-act="accept" data-id="' + r.id + '">✓ Priimti tvirtinti</button>' +
+            '<button type="button" class="rec-btn adm-no" data-act="cancel" data-id="' + r.id + '">✕ Atšaukti</button></span>'
+          : '') +
         '<button type="button" class="rec-btn" data-toggle="' + r.id + '" aria-expanded="' + isOpen + '">' + (isOpen ? 'Mažiau ▴' : 'Daugiau ▾') + '</button></div>' +
         (isOpen ? details(r, steps) : '') +
         '</article>';
@@ -721,7 +767,7 @@ function gateCard(title, text, btnText, msLogo, onClick) {
       row('Transporto nuosavybė', r.VehicleOwnership) + row('Tikslas', r.Purpose) + row('Transporto rūšis', r.VehicleType) +
       row('Markė, modelis', [r.VehicleMake, r.VehicleModel].filter(Boolean).join(' ')) + row('Valstybinis Nr.', r.PlateNumber) +
       row('Keičiamas valst. Nr.', r.ReplacedPlate) + row('Galioja nuo', fmtDate(r.ValidFrom)) + row('Galioja iki', fmtDate(r.ValidTo)) +
-      row('Pateikė', r.by) + row('Pateikta', fmtDT(r.created)) + row('PDF sukurtas', fmtDT(r.PdfCreated)) +
+      row('Pateikė', r.by) + row('Pateikta', fmtDT(r.created)) + row('Administratorės sprendimą priėmė', r.AdminBy) + row('PDF sukurtas', fmtDT(r.PdfCreated)) +
       '</dl><div class="d-sub">Tvirtinimas</div><dl>' + ap + '</dl></div>';
   }
 
@@ -747,6 +793,8 @@ function gateCard(title, text, btnText, msLogo, onClick) {
     $('userMselBtn').addEventListener('click', e => { e.stopPropagation(); $('userMsel').classList.toggle('open'); });
     document.addEventListener('click', e => { const m = $('userMsel'); if (m && !m.contains(e.target)) m.classList.remove('open'); });
     $('list_container').addEventListener('click', e => {
+      const a = e.target.closest('[data-act]');
+      if (a) { openAction(Number(a.dataset.id), a.dataset.act); return; }
       const b = e.target.closest('[data-toggle]');
       if (!b) return;
       const id = Number(b.dataset.toggle);
@@ -757,9 +805,76 @@ function gateCard(title, text, btnText, msLogo, onClick) {
     setInterval(() => { if (document.visibilityState === 'visible') load(false); }, 60000);
   }
 
+  /* ---------- administrator decision: Pateikta → Tvirtinama (accept) / Atšaukta (cancel) ---------- */
+  let pending = null;
+  function openAction(id, act) {
+    const r = all.find(x => x.id === id);
+    if (!r) return;
+    pending = { r, act };
+    const accept = act === 'accept';
+    $('actTitle').textContent = (accept ? 'Priimti tvirtinti: ' : 'Atšaukti užsakymą: ') + (r.Title || '');
+    $('actText').textContent = accept
+      ? (r.name || '') + ' · ' + (r.PermitType || '') + '. Užsakymas bus perduotas tvirtinti (būsena „Tvirtinama“).'
+      : (r.name || '') + ' · ' + (r.PermitType || '') + '. Užsakymas bus atšauktas (būsena „Atšaukta“). Nurodykite priežastį – ją matys pateikėjas.';
+    $('actLbl').innerHTML = accept ? 'Komentaras <span class="opt">(neprivaloma)</span>' : 'Atšaukimo priežastis';
+    $('actComment').value = '';
+    $('actErr').textContent = '';
+    $('actGo').textContent = accept ? 'Priimti' : 'Atšaukti užsakymą';
+    $('actGo').className = 'btn ' + (accept ? 'btn-primary' : 'btn-danger');
+    $('actGo').disabled = false;
+    $('actDlg').showModal();
+    $('actComment').focus();
+  }
+
+  async function doAction() {
+    const { r, act } = pending;
+    const accept = act === 'accept';
+    const comment = $('actComment').value.trim();
+    if (!accept && !comment) { $('actErr').textContent = 'Nurodykite atšaukimo priežastį.'; $('actComment').focus(); return; }
+    $('actGo').disabled = true; $('actGo').textContent = 'Saugoma…'; $('actErr').textContent = '';
+    try {
+      const map = await SPC.loadFields();
+      const P = k => map[k] && map[k].EntityPropertyName;
+      if (!P('Status')) throw new Error('Sąraše nerastas stulpelis „Status“ (Būsena).');
+      // someone else may have acted meanwhile – re-check the current status first
+      const cur = await SPC.sp(SPC.itemsUrl + '(' + r.id + ')?$select=' + P('Status'));
+      if ((cur[P('Status')] || 'Pateikta') !== 'Pateikta') throw new Error('Šio užsakymo būsena jau pakeista („' + cur[P('Status')] + '“). Sąrašas atnaujintas.');
+      const body = {};
+      const set = (k, v) => { if (P(k)) body[P(k)] = (map[k].TypeAsString === 'Boolean') ? !!v : v; };
+      set('Status', accept ? 'Tvirtinama' : 'Atšaukta');
+      set('AdminDecision', accept ? 'Patvirtinta' : 'Atmesta');
+      set('AdminDate', new Date().toISOString());
+      if (comment) set('AdminComment', comment);
+      set('AdminBy', SPC.account.name || SPC.account.username);
+      await SPC.sp(SPC.itemsUrl + '(' + r.id + ')', 'POST', body, { 'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE' });
+      $('actDlg').close();
+      toast(accept ? r.Title + ' perduotas tvirtinti' : r.Title + ' atšauktas');
+      await load(false);
+    } catch (e) {
+      console.error(e);
+      $('actErr').textContent = e.message;
+      $('actGo').disabled = false; $('actGo').textContent = accept ? 'Priimti' : 'Atšaukti užsakymą';
+      if (/jau pakeista/.test(e.message)) load(false);
+    }
+  }
+
+  function toast(msg) {
+    const t = $('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
   function start() {
     $('app').hidden = false;
     me = ((SPC.account && SPC.account.username) || '').toLowerCase();
+    isAdmin = SPC.isAdmin();
+    if (isAdmin) {            // administrator: show everything waiting for her decision by default
+      $('adminGroup').hidden = false;
+      $('f_mine').checked = false;
+      $('f_todo').checked = true;
+    }
+    $('actGo').addEventListener('click', doAction);
+    $('actBack').addEventListener('click', () => $('actDlg').close());
     wire();
     load(true);
   }
