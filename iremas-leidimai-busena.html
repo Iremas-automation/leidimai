@@ -547,7 +547,8 @@ function gateCard(title, text, btnText, msLogo, onClick) {
 
   const STATUS_CLS = { 'Pateikta': 'st-new', 'Tvirtinama': 'st-wait', 'Patvirtinta': 'st-ok', 'Atmesta': 'st-no', 'Atšaukta': 'st-cancel' };
   const OFFICE = 'Leidimų biuras';
-  const SPLIT = /[\s\-\/_.,;:()„“"]+/;
+  // lower-case + strip Lithuanian accents, so "onaite" finds "Onaitė" and "skod" finds "Škoda"
+  const fold = s => String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
   let all = [], lastUpdated = null, me = '';
   const open = new Set();          // ids of expanded cards (kept across refreshes)
@@ -618,11 +619,10 @@ function gateCard(title, text, btnText, msLogo, onClick) {
       if (from && new Date(r.created) < new Date(from + 'T00:00:00')) return false;
       if (to && new Date(r.created) > new Date(to + 'T23:59:59')) return false;
       if (q) {
-        const text = [r.Title, r.name, r.Position, r.TabelNo, r.PlateNumber, r.ReplacedPlate, r.VehicleMake, r.VehicleModel,
-          r.VehicleType, r.PermitType, r.status, r.Purpose, r.by].join(' ').toLowerCase();
-        // whole tokens (LD-2026-0010) and their parts (ld, 2026, 0010) both match by prefix
-        const words = text.split(/\s+/).concat(text.split(SPLIT)).filter(Boolean);
-        if (!q.split(/\s+/).filter(Boolean).every(t => words.some(w => w.startsWith(t)))) return false;
+        // partial match: every typed word must appear anywhere in the record (case- and accent-insensitive)
+        const text = fold([r.Title, r.name, r.Position, r.TabelNo, r.PlateNumber, r.ReplacedPlate, r.VehicleMake, r.VehicleModel,
+          r.VehicleType, r.PermitType, r.status, r.Purpose, r.by, fmtDate(r.ValidFrom), fmtDate(r.ValidTo), fmtDate(r.created)].join(' '));
+        if (!fold(q).split(/\s+/).filter(Boolean).every(t => text.includes(t))) return false;
       }
       return true;
     });
