@@ -407,6 +407,7 @@ const SP_CONFIG = {
   clientId: '03dc6464-8653-43b1-83f0-99833ec01e3d',                  // App registration → Application (client) ID
   siteUrl: 'https://achemosgrupelt.sharepoint.com/sites/IremasLeidimai',
   listTitle: 'Leidimai_darbuotojams',
+  guestListTitle: 'Leidimai_sveciams',                               // svečių / subrangovų užsakymai
   permitPrefix: 'LD',                                                // leidimo Nr.: LD-2026-0001
   formVersion: 'staff-1.1'
 };
@@ -433,7 +434,23 @@ window.SPC = (function () {
     FormVersion: 'Formos versija', PayloadJson: 'Formos duomenys (JSON)'
   };
 
-  const api = { configured, config: SP_CONFIG, DISPLAY, account: null };
+  /* Guest list (Leidimai_sveciams) – English names = internal/display names from the guest column spec */
+  const GUEST_DISPLAY = {
+    Title: 'Leidimo Nr.', PermitType: 'Leidimo tipas', Status: 'Būsena', ContactPerson: 'UAB „Iremas“ kontaktinis asmuo',
+    Company: 'Įmonė', CompanyCode: 'Įmonės kodas', HasContract: 'Bendradarbiavimo sutartis', ContractNo: 'Sutarties Nr.',
+    Purpose: 'Apsilankymo tikslas', ContactEmail: 'Užsakovo el. paštas', ContactPhone: 'Užsakovo telefonas',
+    VisitorCount: 'Lankytojų sk.', Visitors: 'Lankytojai', VisitorNames: 'Lankytojų vardai',
+    RequestKind: 'Užsakymo tipas', ReplacedPlate: 'Keičiamas valst. Nr.', VehicleCount: 'Transporto priemonių sk.',
+    Vehicles: 'Transporto priemonės', Plates: 'Valstybiniai Nr.', ValidFrom: 'Galioja nuo', ValidTo: 'Galioja iki',
+    RulesAccepted: 'Susipažino su taisyklėmis', ApprovalChain: 'Tvirtinimo seka', ApprovalSent: 'Išsiųstas tvirtinimo laiškas',
+    AdminDecision: 'Pirminė patikra – sprendimas', AdminDate: 'Pirminė patikra – data', AdminComment: 'Pirminė patikra – komentaras', AdminBy: 'Pirminė patikra – kas tikrino',
+    Approval1Decision: '1 tvirtinimas (M. Petraitis) – sprendimas', Approval1Date: '1 tvirtinimas – data', Approval1Comment: '1 tvirtinimas – komentaras',
+    Approval2Decision: '2 tvirtinimas (E. Juzėnas) – sprendimas', Approval2Date: '2 tvirtinimas – data', Approval2Comment: '2 tvirtinimas – komentaras',
+    OfficeDecision: 'Leidimų biuras – sprendimas', OfficeDate: 'Leidimų biuras – data', OfficeComment: 'Leidimų biuras – komentaras',
+    PermitPdf: 'Leidimo PDF', PdfCreated: 'PDF sukurtas', FormVersion: 'Formos versija'
+  };
+
+  const api = { configured, config: SP_CONFIG, DISPLAY, GUEST_DISPLAY, account: null };
   if (!configured) return api;
 
   const spOrigin = new URL(SP_CONFIG.siteUrl).origin;
@@ -474,26 +491,33 @@ window.SPC = (function () {
     return res.status === 204 ? null : res.json();
   }
 
-  const listUrl = SP_CONFIG.siteUrl.replace(/\/$/, '') + "/_api/web/lists/getbytitle('" +
-    encodeURIComponent(SP_CONFIG.listTitle.replace(/'/g, "''")) + "')";
-
-  let fieldMap = null;
-  async function loadFields() {
-    if (fieldMap) return fieldMap;
-    const r = await sp(listUrl + '/fields?$select=Title,InternalName,EntityPropertyName,TypeAsString,ReadOnlyField,Hidden');
-    const fields = (r.value || []).filter(f => !f.ReadOnlyField && !f.Hidden);
-    const norm = x => String(x || '').trim().toLowerCase();
-    fieldMap = {};
-    Object.keys(DISPLAY).forEach(key => {
-      const f = fields.find(f => f.InternalName === key) ||
-                fields.find(f => f.EntityPropertyName === key) ||
-                fields.find(f => norm(f.Title) === norm(key)) ||
-                fields.find(f => norm(f.Title) === norm(DISPLAY[key]));
-      if (f) fieldMap[key] = f;
-    });
-    console.log('SharePoint column map', Object.fromEntries(Object.entries(fieldMap).map(([k, f]) => [k, f.EntityPropertyName + ' (' + f.TypeAsString + ')'])));
-    return fieldMap;
+  /* One helper object per SharePoint list: { title, listUrl, itemsUrl, display, loadFields() } */
+  function makeList(title, display) {
+    const listUrl = SP_CONFIG.siteUrl.replace(/\/$/, '') + "/_api/web/lists/getbytitle('" +
+      encodeURIComponent(title.replace(/'/g, "''")) + "')";
+    let fieldMap = null;
+    // Map our names → the property name the REST API expects. Works whether columns were created by hand
+    // (internal name = PermitType), imported from Excel (field_N, display = PermitType) or renamed to Lithuanian.
+    async function loadFields() {
+      if (fieldMap) return fieldMap;
+      const r = await sp(listUrl + '/fields?$select=Title,InternalName,EntityPropertyName,TypeAsString,ReadOnlyField,Hidden');
+      const fields = (r.value || []).filter(f => !f.ReadOnlyField && !f.Hidden);
+      const norm = x => String(x || '').trim().toLowerCase();
+      fieldMap = {};
+      Object.keys(display).forEach(key => {
+        const f = fields.find(f => f.InternalName === key) ||
+                  fields.find(f => f.EntityPropertyName === key) ||
+                  fields.find(f => norm(f.Title) === norm(key)) ||
+                  fields.find(f => norm(f.Title) === norm(display[key]));
+        if (f) fieldMap[key] = f;
+      });
+      console.log('SharePoint column map – ' + title, Object.fromEntries(Object.entries(fieldMap).map(([k, f]) => [k, f.EntityPropertyName + ' (' + f.TypeAsString + ')'])));
+      return fieldMap;
+    }
+    return { title, listUrl, itemsUrl: listUrl + '/items', display, loadFields };
   }
+  const staffList = makeList(SP_CONFIG.listTitle, DISPLAY);
+  const guestList = makeList(SP_CONFIG.guestListTitle || 'Leidimai_sveciams', GUEST_DISPLAY);
 
   /* Sign-in gate: shows a card in `root` until the user is signed in, then calls onReady() */
   async function gate(root, intro, onReady) {
@@ -532,7 +556,12 @@ window.SPC = (function () {
     box.style.display = 'block';
   }
 
-  return Object.assign(api, { sp, getToken, listUrl, itemsUrl: listUrl + '/items', loadFields, gate });
+  return Object.assign(api, {
+    sp, getToken, gate,
+    lists: { staff: staffList, guest: guestList },
+    // backwards compatible shortcuts used by the staff order form
+    listUrl: staffList.listUrl, itemsUrl: staffList.itemsUrl, loadFields: staffList.loadFields
+  });
 })();
 
 function gateCard(title, text, btnText, msLogo, onClick) {
