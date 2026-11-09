@@ -315,6 +315,12 @@ main.wide{max-width:1200px}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 @media (max-width:760px){.adm-actions{margin-left:0;width:100%}.adm-actions .rec-btn{flex:1}}
 
+/* list source tag + multi-line details (guest visitors / vehicles) */
+.rec-src{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;border-radius:999px;padding:2px 9px;vertical-align:middle}
+.rec-src-staff{background:#e6e9ee;color:#3a4148}
+.rec-src-guest{background:#efe6d8;color:#7a5a24}
+.d-row dd{white-space:pre-line}
+
 </style>
 </head>
 <body class="staff">
@@ -327,7 +333,7 @@ main.wide{max-width:1200px}
   <div class="hero">
     <span class="pill-hero pill">Iremas darbuotojams</span>
     <h1>Užsakymų būsena</h1>
-    <p class="lead">Pateiktų leidimų užsakymų eiga ir tvirtinimas.</p>
+    <p class="lead">Darbuotojų ir svečių leidimų užsakymų eiga ir tvirtinimas.</p>
   </div>
   <div id="gate"></div>
   <div id="app" hidden>
@@ -337,6 +343,11 @@ main.wide{max-width:1200px}
         <div class="fgroup" id="adminGroup">
           <div class="fgroup-title">Pirminė patikra</div>
           <label class="fopt"><input type="checkbox" id="f_todo"> Laukia pirminės patikros</label>
+        </div>
+        <div class="fgroup">
+          <div class="fgroup-title">Sąrašas</div>
+          <label class="fopt"><input type="checkbox" data-g="src" value="staff"> Darbuotojai</label>
+          <label class="fopt"><input type="checkbox" data-g="src" value="guest"> Svečiai / subrangovai</label>
         </div>
         <div class="fgroup">
           <div class="fgroup-title">Rodyti</div>
@@ -355,6 +366,10 @@ main.wide{max-width:1200px}
           <label class="fopt"><input type="checkbox" data-g="type" value="Naujam darbuotojui"> Naujam darbuotojui</label>
           <label class="fopt"><input type="checkbox" data-g="type" value="Nuomojamam arba UAB „Iremas“ transportui"> Nuomojamam / Iremas transportui</label>
           <label class="fopt"><input type="checkbox" data-g="type" value="Darbuotojo asmeniniam transportui"> Asmeniniam transportui</label>
+          <label class="fopt"><input type="checkbox" data-g="type" value="Vienkartinis be transporto"> Svečiai: vienkartinis be transporto</label>
+          <label class="fopt"><input type="checkbox" data-g="type" value="Vienkartinis su transportu"> Svečiai: vienkartinis su transportu</label>
+          <label class="fopt"><input type="checkbox" data-g="type" value="Ilgalaikis be transporto"> Svečiai: ilgalaikis be transporto</label>
+          <label class="fopt"><input type="checkbox" data-g="type" value="Ilgalaikis su transportu"> Svečiai: ilgalaikis su transportu</label>
         </div>
         <div class="fgroup">
           <div class="fgroup-title">Galiojimas</div>
@@ -384,7 +399,7 @@ main.wide{max-width:1200px}
       </aside>
       <div class="list-main">
         <div class="list-bar">
-          <input type="search" id="list_search" placeholder="Ieškoti (leidimo Nr., vardas, valst. Nr.…)" aria-label="Paieška">
+          <input type="search" id="list_search" placeholder="Ieškoti (leidimo Nr., vardas, įmonė, valst. Nr.…)" aria-label="Paieška">
           <button class="btn-refresh" id="btnRefresh" type="button" title="Atnaujinti" aria-label="Atnaujinti">⟳</button>
         </div>
         <div class="list-count" id="list_count"></div>
@@ -423,6 +438,7 @@ const SP_CONFIG = {
   clientId: '03dc6464-8653-43b1-83f0-99833ec01e3d',                  // App registration → Application (client) ID
   siteUrl: 'https://achemosgrupelt.sharepoint.com/sites/IremasLeidimai',
   listTitle: 'Leidimai_darbuotojams',
+  guestListTitle: 'Leidimai_sveciams',                               // svečių / subrangovų užsakymai
   permitPrefix: 'LD',                                                // leidimo Nr.: LD-2026-0001
   formVersion: 'staff-1.1'
 };
@@ -449,7 +465,23 @@ window.SPC = (function () {
     FormVersion: 'Formos versija', PayloadJson: 'Formos duomenys (JSON)'
   };
 
-  const api = { configured, config: SP_CONFIG, DISPLAY, account: null };
+  /* Guest list (Leidimai_sveciams) – English names = internal/display names from the guest column spec */
+  const GUEST_DISPLAY = {
+    Title: 'Leidimo Nr.', PermitType: 'Leidimo tipas', Status: 'Būsena', ContactPerson: 'UAB „Iremas“ kontaktinis asmuo',
+    Company: 'Įmonė', CompanyCode: 'Įmonės kodas', HasContract: 'Bendradarbiavimo sutartis', ContractNo: 'Sutarties Nr.',
+    Purpose: 'Apsilankymo tikslas', ContactEmail: 'Užsakovo el. paštas', ContactPhone: 'Užsakovo telefonas',
+    VisitorCount: 'Lankytojų sk.', Visitors: 'Lankytojai', VisitorNames: 'Lankytojų vardai',
+    RequestKind: 'Užsakymo tipas', ReplacedPlate: 'Keičiamas valst. Nr.', VehicleCount: 'Transporto priemonių sk.',
+    Vehicles: 'Transporto priemonės', Plates: 'Valstybiniai Nr.', ValidFrom: 'Galioja nuo', ValidTo: 'Galioja iki',
+    RulesAccepted: 'Susipažino su taisyklėmis', ApprovalChain: 'Tvirtinimo seka', ApprovalSent: 'Išsiųstas tvirtinimo laiškas',
+    AdminDecision: 'Pirminė patikra – sprendimas', AdminDate: 'Pirminė patikra – data', AdminComment: 'Pirminė patikra – komentaras', AdminBy: 'Pirminė patikra – kas tikrino',
+    Approval1Decision: '1 tvirtinimas (M. Petraitis) – sprendimas', Approval1Date: '1 tvirtinimas – data', Approval1Comment: '1 tvirtinimas – komentaras',
+    Approval2Decision: '2 tvirtinimas (E. Juzėnas) – sprendimas', Approval2Date: '2 tvirtinimas – data', Approval2Comment: '2 tvirtinimas – komentaras',
+    OfficeDecision: 'Leidimų biuras – sprendimas', OfficeDate: 'Leidimų biuras – data', OfficeComment: 'Leidimų biuras – komentaras',
+    PermitPdf: 'Leidimo PDF', PdfCreated: 'PDF sukurtas', FormVersion: 'Formos versija'
+  };
+
+  const api = { configured, config: SP_CONFIG, DISPLAY, GUEST_DISPLAY, account: null };
   if (!configured) return api;
 
   const spOrigin = new URL(SP_CONFIG.siteUrl).origin;
@@ -490,26 +522,33 @@ window.SPC = (function () {
     return res.status === 204 ? null : res.json();
   }
 
-  const listUrl = SP_CONFIG.siteUrl.replace(/\/$/, '') + "/_api/web/lists/getbytitle('" +
-    encodeURIComponent(SP_CONFIG.listTitle.replace(/'/g, "''")) + "')";
-
-  let fieldMap = null;
-  async function loadFields() {
-    if (fieldMap) return fieldMap;
-    const r = await sp(listUrl + '/fields?$select=Title,InternalName,EntityPropertyName,TypeAsString,ReadOnlyField,Hidden');
-    const fields = (r.value || []).filter(f => !f.ReadOnlyField && !f.Hidden);
-    const norm = x => String(x || '').trim().toLowerCase();
-    fieldMap = {};
-    Object.keys(DISPLAY).forEach(key => {
-      const f = fields.find(f => f.InternalName === key) ||
-                fields.find(f => f.EntityPropertyName === key) ||
-                fields.find(f => norm(f.Title) === norm(key)) ||
-                fields.find(f => norm(f.Title) === norm(DISPLAY[key]));
-      if (f) fieldMap[key] = f;
-    });
-    console.log('SharePoint column map', Object.fromEntries(Object.entries(fieldMap).map(([k, f]) => [k, f.EntityPropertyName + ' (' + f.TypeAsString + ')'])));
-    return fieldMap;
+  /* One helper object per SharePoint list: { title, listUrl, itemsUrl, display, loadFields() } */
+  function makeList(title, display) {
+    const listUrl = SP_CONFIG.siteUrl.replace(/\/$/, '') + "/_api/web/lists/getbytitle('" +
+      encodeURIComponent(title.replace(/'/g, "''")) + "')";
+    let fieldMap = null;
+    // Map our names → the property name the REST API expects. Works whether columns were created by hand
+    // (internal name = PermitType), imported from Excel (field_N, display = PermitType) or renamed to Lithuanian.
+    async function loadFields() {
+      if (fieldMap) return fieldMap;
+      const r = await sp(listUrl + '/fields?$select=Title,InternalName,EntityPropertyName,TypeAsString,ReadOnlyField,Hidden');
+      const fields = (r.value || []).filter(f => !f.ReadOnlyField && !f.Hidden);
+      const norm = x => String(x || '').trim().toLowerCase();
+      fieldMap = {};
+      Object.keys(display).forEach(key => {
+        const f = fields.find(f => f.InternalName === key) ||
+                  fields.find(f => f.EntityPropertyName === key) ||
+                  fields.find(f => norm(f.Title) === norm(key)) ||
+                  fields.find(f => norm(f.Title) === norm(display[key]));
+        if (f) fieldMap[key] = f;
+      });
+      console.log('SharePoint column map – ' + title, Object.fromEntries(Object.entries(fieldMap).map(([k, f]) => [k, f.EntityPropertyName + ' (' + f.TypeAsString + ')'])));
+      return fieldMap;
+    }
+    return { title, listUrl, itemsUrl: listUrl + '/items', display, loadFields };
   }
+  const staffList = makeList(SP_CONFIG.listTitle, DISPLAY);
+  const guestList = makeList(SP_CONFIG.guestListTitle || 'Leidimai_sveciams', GUEST_DISPLAY);
 
   /* Sign-in gate: shows a card in `root` until the user is signed in, then calls onReady() */
   async function gate(root, intro, onReady) {
@@ -548,7 +587,12 @@ window.SPC = (function () {
     box.style.display = 'block';
   }
 
-  return Object.assign(api, { sp, getToken, listUrl, itemsUrl: listUrl + '/items', loadFields, gate });
+  return Object.assign(api, {
+    sp, getToken, gate,
+    lists: { staff: staffList, guest: guestList },
+    // backwards compatible shortcuts used by the staff order form
+    listUrl: staffList.listUrl, itemsUrl: staffList.itemsUrl, loadFields: staffList.loadFields
+  });
 })();
 
 function gateCard(title, text, btnText, msLogo, onClick) {
@@ -588,31 +632,62 @@ function gateCard(title, text, btnText, msLogo, onClick) {
   const fold = s => String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
   let all = [], lastUpdated = null, me = '';
-  const open = new Set();          // ids of expanded cards (kept across refreshes)
+  const open = new Set();          // keys ("staff:12" / "guest:3") of expanded cards, kept across refreshes
+  let guestWarn = '';
 
   /* ---------- data ---------- */
+  async function fetchAll(L) {
+    let url = L.itemsUrl + '?$select=*,Author/Title,Author/EMail&$expand=Author&$orderby=Created desc&$top=500';
+    const items = [];
+    while (url) {
+      const r = await SPC.sp(url);
+      items.push(...(r.value || []));
+      url = r['odata.nextLink'] || null;
+    }
+    return items;
+  }
+
+  function toRecord(src, L, map, it) {
+    const get = k => (map[k] ? it[map[k].EntityPropertyName] : undefined);
+    const r = { src, id: it.Id || it.ID, created: it.Created };
+    r.key = src + ':' + r.id;
+    Object.keys(L.display).forEach(k => { r[k] = get(k); });
+    if (src === 'guest') {
+      // guests are registered by the flow, so "Created By" is the flow owner – use the visitor's contact instead
+      r.by = r.ContactEmail || '';
+      r.byEmail = String(r.ContactEmail || '').toLowerCase();
+      r.name = r.VisitorNames || r.Company || '';
+      r.Position = r.Company;                // shown in the card's meta line
+      r.PlateNumber = r.Plates;
+    } else {
+      r.by = (it.Author && it.Author.Title) || '';
+      r.byEmail = ((it.Author && it.Author.EMail) || '').toLowerCase();
+      r.name = [r.EmployeeFirstName, r.EmployeeLastName].filter(Boolean).join(' ');
+    }
+    const pdf = r.PermitPdf;
+    r.pdfUrl = pdf && typeof pdf === 'object' ? pdf.Url : (typeof pdf === 'string' && /^https?:/.test(pdf) ? pdf.split(',')[0] : '');
+    r.status = r.Status || 'Pateikta';
+    return r;
+  }
+
   async function load(first) {
     const cont = $('list_container');
     if (first) cont.innerHTML = '<div class="list-msg">Kraunama…</div>';
     try {
-      const map = await SPC.loadFields();
-      let url = SPC.itemsUrl + '?$select=*,Author/Title,Author/EMail&$expand=Author&$orderby=Created desc&$top=500';
-      const items = [];
-      while (url) {
-        const r = await SPC.sp(url);
-        items.push(...(r.value || []));
-        url = r['odata.nextLink'] || null;
-      }
-      const get = (it, key) => (map[key] ? it[map[key].EntityPropertyName] : undefined);
-      all = items.map(it => {
-        const r = { id: it.Id || it.ID, created: it.Created, by: (it.Author && it.Author.Title) || '', byEmail: ((it.Author && it.Author.EMail) || '').toLowerCase() };
-        Object.keys(SPC.DISPLAY).forEach(k => { r[k] = get(it, k); });
-        const pdf = r.PermitPdf;
-        r.pdfUrl = pdf && typeof pdf === 'object' ? pdf.Url : (typeof pdf === 'string' && /^https?:/.test(pdf) ? pdf.split(',')[0] : '');
-        r.name = [r.EmployeeFirstName, r.EmployeeLastName].filter(Boolean).join(' ');
-        r.status = r.Status || 'Pateikta';
-        return r;
-      });
+      guestWarn = '';
+      const parts = await Promise.all(['staff', 'guest'].map(async src => {
+        const L = SPC.lists[src];
+        try {
+          const map = await L.loadFields();
+          return (await fetchAll(L)).map(it => toRecord(src, L, map, it));
+        } catch (e) {
+          if (src === 'staff') throw e;
+          console.warn('Svečių sąrašas neįkeltas:', e);       // guest list missing / no access → show staff only
+          guestWarn = 'Svečių užsakymų įkelti nepavyko: ' + e.message;
+          return [];
+        }
+      }));
+      all = parts.flat().sort((a, b) => new Date(b.created) - new Date(a.created));
       lastUpdated = new Date();
       populateUsers();
       const y = window.scrollY;
@@ -639,6 +714,7 @@ function gateCard(title, text, btnText, msLogo, onClick) {
   function apply() {
     const q = $('list_search').value.trim().toLowerCase();
     const mine = $('f_mine').checked;
+    const src = checked('src');
     const st = checked('status'), tp = checked('type'), val = checked('valid'), dt = checked('date'), users = checked('user');
     const ok = v => /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
     const from = ok($('f_from').value), to = ok($('f_to').value);
@@ -646,6 +722,7 @@ function gateCard(title, text, btnText, msLogo, onClick) {
     const list = all.filter(r => {
       if (mine && me && r.byEmail !== me) return false;
       if ($('f_todo').checked && r.status !== 'Pateikta') return false;
+      if (src.length && !src.includes(r.src)) return false;
       if (st.length && !st.includes(r.status)) return false;
       if (tp.length && !tp.includes(r.PermitType)) return false;
       if (users.length && !users.includes(r.by)) return false;
@@ -659,13 +736,14 @@ function gateCard(title, text, btnText, msLogo, onClick) {
       if (q) {
         // partial match: every typed word must appear anywhere in the record (case- and accent-insensitive)
         const text = fold([r.Title, r.name, r.Position, r.TabelNo, r.PlateNumber, r.ReplacedPlate, r.VehicleMake, r.VehicleModel,
-          r.VehicleType, r.PermitType, r.status, r.Purpose, r.by, fmtDate(r.ValidFrom), fmtDate(r.ValidTo), fmtDate(r.created)].join(' '));
+          r.VehicleType, r.PermitType, r.status, r.Purpose, r.by, fmtDate(r.ValidFrom), fmtDate(r.ValidTo), fmtDate(r.created),
+          r.Company, r.CompanyCode, r.Plates, r.Visitors, r.ContactEmail, r.ContactPerson, r.src === 'guest' ? 'svečiai svečias' : 'darbuotojai'].join(' '));
         if (!fold(q).split(/\s+/).filter(Boolean).every(t => text.includes(t))) return false;
       }
       return true;
     });
     render(list);
-    const n = st.length + tp.length + val.length + dt.length + users.length + ((from || to) ? 1 : 0) + (mine ? 1 : 0) + ($('f_todo').checked ? 1 : 0);
+    const n = src.length + st.length + tp.length + val.length + dt.length + users.length + ((from || to) ? 1 : 0) + (mine ? 1 : 0) + ($('f_todo').checked ? 1 : 0);
     $('filterToggle').textContent = n ? 'Filtrai (' + n + ')' : 'Filtrai';
     updateUserBtn();
   }
@@ -692,7 +770,7 @@ function gateCard(title, text, btnText, msLogo, onClick) {
 
   /* ---------- rendering ---------- */
   function approvalSteps(r) {
-    const chain = String(r.ApprovalChain || (r.PermitType === 'Naujam darbuotojui' ? CHECK + ' → ' + OFFICE : CHECK + ' → M. Petraitis → E. Juzėnas → ' + OFFICE))
+    const chain = String(r.ApprovalChain || (['Naujam darbuotojui', 'Vienkartinis be transporto'].includes(r.PermitType) ? CHECK + ' → ' + OFFICE : CHECK + ' → M. Petraitis → E. Juzėnas → ' + OFFICE))
       .split('→').map(s => s.trim()).filter(Boolean).map(s => (isCheckStep(s) ? CHECK : s));
     let n = 0, blocked = false, currentSet = false;
     return chain.map(name => {
@@ -709,6 +787,7 @@ function gateCard(title, text, btnText, msLogo, onClick) {
     const cont = $('list_container');
     $('list_count').textContent = (list.length ? list.length + ' įr.' : '') +
       (lastUpdated ? (list.length ? ' · ' : '') + 'atnaujinta ' + lastUpdated.toLocaleTimeString('lt-LT') : '');
+    if (guestWarn) $('list_count').textContent += ' · ' + guestWarn;
     if (!list.length) {
       cont.innerHTML = '<div class="list-msg">' + (all.length ? 'Pagal pasirinktus filtrus užsakymų nerasta.' : 'Užsakymų dar nėra.') + '</div>';
       return;
@@ -733,29 +812,39 @@ function gateCard(title, text, btnText, msLogo, onClick) {
       const pdf = r.pdfUrl
         ? '<a class="rec-link" href="' + esc(r.pdfUrl) + '" target="_blank" rel="noopener">📄 Atidaryti leidimą (PDF)</a>'
         : '<span class="rec-link muted">PDF dar nesukurtas</span>';
-      const isOpen = open.has(r.id);
+      const isOpen = open.has(r.key);
       return '<article class="rec ' + (STATUS_CLS[r.status] || 'st-new') + '">' +
         '<div class="rec-top"><div class="rec-num">' + esc(r.Title || '(be numerio)') + '</div>' +
         '<span class="pill ' + (STATUS_CLS[r.status] || 'st-new') + '">' + esc(r.status) + '</span>' + vPill + '</div>' +
-        '<div class="rec-name">' + esc(r.name || '—') + '<span class="rec-type">' + esc(r.PermitType || '') + '</span></div>' +
+        '<div class="rec-name">' + esc(r.name || '—') + '<span class="rec-type">' + esc(r.PermitType || '') + '</span><span class="rec-src rec-src-' + r.src + '">' + (r.src === 'guest' ? 'Svečiai' : 'Darbuotojai') + '</span></div>' +
         '<div class="rec-meta">' + meta.map(m => '<span>' + m + '</span>').join('') + '</div>' +
         chain +
         '<div class="rec-actions">' + pdf +
         (r.status === 'Pateikta'
-          ? '<span class="adm-actions"><button type="button" class="rec-btn adm-ok" data-act="accept" data-id="' + r.id + '">✓ Priimti tvirtinti</button>' +
-            '<button type="button" class="rec-btn adm-no" data-act="cancel" data-id="' + r.id + '">✕ Atšaukti</button></span>'
+          ? '<span class="adm-actions"><button type="button" class="rec-btn adm-ok" data-act="accept" data-key="' + r.key + '">✓ Priimti tvirtinti</button>' +
+            '<button type="button" class="rec-btn adm-no" data-act="cancel" data-key="' + r.key + '">✕ Atšaukti</button></span>'
           : '') +
-        '<button type="button" class="rec-btn" data-toggle="' + r.id + '" aria-expanded="' + isOpen + '">' + (isOpen ? 'Mažiau ▴' : 'Daugiau ▾') + '</button></div>' +
+        '<button type="button" class="rec-btn" data-toggle="' + r.key + '" aria-expanded="' + isOpen + '">' + (isOpen ? 'Mažiau ▴' : 'Daugiau ▾') + '</button></div>' +
         (isOpen ? details(r, steps) : '') +
         '</article>';
     }).join('');
   }
 
   function details(r, steps) {
-    const row = (k, v) => (v ? '<div class="d-row"><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>' : '');
+    const row = (k, v) => (v || v === 0 ? '<div class="d-row"><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>' : '');
     const ap = steps.map(s => row(s.name,
       (s.state === 'ok' ? 'Patvirtinta' : s.state === 'no' ? 'Atmesta' : s.state === 'cur' ? 'Laukiama sprendimo' : 'Laukia eilės') +
       (s.date ? ' · ' + fmtDT(s.date) : '') + (s.com ? ' – „' + s.com + '“' : ''))).join('');
+    const tail = '</dl><div class="d-sub">Tvirtinimas</div><dl>' + ap + '</dl></div>';
+    if (r.src === 'guest') {
+      return '<div class="rec-details"><dl>' +
+        row('Leidimo tipas', r.PermitType) + row('Įmonė', r.Company) + row('Įmonės kodas', r.CompanyCode) +
+        row('Bendradarbiavimo sutartis', [r.HasContract, r.ContractNo].filter(Boolean).join(', ')) + row('Apsilankymo tikslas', r.Purpose) +
+        row('UAB „Iremas“ kontaktinis asmuo', r.ContactPerson) + row('Užsakovo el. paštas', r.ContactEmail) + row('Užsakovo telefonas', r.ContactPhone) +
+        row('Lankytojai', r.Visitors) + row('Užsakymo tipas', r.RequestKind) + row('Transporto priemonės', r.Vehicles) +
+        row('Keičiamas valst. Nr.', r.ReplacedPlate) + row('Galioja nuo', fmtDate(r.ValidFrom)) + row('Galioja iki', fmtDate(r.ValidTo)) +
+        row('Pateikta', fmtDT(r.created)) + row('Pirminę patikrą atliko', r.AdminBy) + row('PDF sukurtas', fmtDT(r.PdfCreated)) + tail;
+    }
     return '<div class="rec-details"><dl>' +
       row('Leidimo tipas', r.PermitType) + row('Užsakymo tipas', r.RequestKind) + row('Vardas, pavardė', r.name) +
       row('Pareigos', r.Position) + row('Tabelio Nr.', r.TabelNo) + row('Sutarties sudarymo data', fmtDate(r.ContractDate)) +
@@ -790,11 +879,11 @@ function gateCard(title, text, btnText, msLogo, onClick) {
     document.addEventListener('click', e => { const m = $('userMsel'); if (m && !m.contains(e.target)) m.classList.remove('open'); });
     $('list_container').addEventListener('click', e => {
       const a = e.target.closest('[data-act]');
-      if (a) { openAction(Number(a.dataset.id), a.dataset.act); return; }
+      if (a) { openAction(a.dataset.key, a.dataset.act); return; }
       const b = e.target.closest('[data-toggle]');
       if (!b) return;
-      const id = Number(b.dataset.toggle);
-      open.has(id) ? open.delete(id) : open.add(id);
+      const k = b.dataset.toggle;
+      open.has(k) ? open.delete(k) : open.add(k);
       apply();
     });
     // background refresh every 60 s while the tab is visible
@@ -803,8 +892,8 @@ function gateCard(title, text, btnText, msLogo, onClick) {
 
   /* ---------- initial check (pirminė patikra): Pateikta → Tvirtinama (accept) / Atšaukta (cancel) ---------- */
   let pending = null;
-  function openAction(id, act) {
-    const r = all.find(x => x.id === id);
+  function openAction(key, act) {
+    const r = all.find(x => x.key === key);
     if (!r) return;
     pending = { r, act };
     const accept = act === 'accept';
@@ -829,11 +918,12 @@ function gateCard(title, text, btnText, msLogo, onClick) {
     if (!accept && !comment) { $('actErr').textContent = 'Nurodykite atšaukimo priežastį.'; $('actComment').focus(); return; }
     $('actGo').disabled = true; $('actGo').textContent = 'Saugoma…'; $('actErr').textContent = '';
     try {
-      const map = await SPC.loadFields();
+      const L = SPC.lists[r.src];
+      const map = await L.loadFields();
       const P = k => map[k] && map[k].EntityPropertyName;
       if (!P('Status')) throw new Error('Sąraše nerastas stulpelis „Status“ (Būsena).');
       // someone else may have acted meanwhile – re-check the current status first
-      const cur = await SPC.sp(SPC.itemsUrl + '(' + r.id + ')?$select=' + P('Status'));
+      const cur = await SPC.sp(L.itemsUrl + '(' + r.id + ')?$select=' + P('Status'));
       if ((cur[P('Status')] || 'Pateikta') !== 'Pateikta') throw new Error('Šio užsakymo būsena jau pakeista („' + cur[P('Status')] + '“). Sąrašas atnaujintas.');
       const body = {};
       const set = (k, v) => { if (P(k)) body[P(k)] = (map[k].TypeAsString === 'Boolean') ? !!v : v; };
@@ -842,7 +932,7 @@ function gateCard(title, text, btnText, msLogo, onClick) {
       set('AdminDate', new Date().toISOString());
       if (comment) set('AdminComment', comment);
       set('AdminBy', SPC.account.name || SPC.account.username);
-      await SPC.sp(SPC.itemsUrl + '(' + r.id + ')', 'POST', body, { 'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE' });
+      await SPC.sp(L.itemsUrl + '(' + r.id + ')', 'POST', body, { 'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE' });
       $('actDlg').close();
       toast(accept ? r.Title + ' perduotas tvirtinti' : r.Title + ' atšauktas');
       await load(false);
@@ -862,12 +952,22 @@ function gateCard(title, text, btnText, msLogo, onClick) {
 
   function start() {
     $('app').hidden = false;
+    try {
+      const q0 = sessionStorage.getItem('busenaQ');
+      if (q0) { $('list_search').value = q0; sessionStorage.removeItem('busenaQ'); }
+    } catch (_) {}
     me = ((SPC.account && SPC.account.username) || '').toLowerCase();
     $('actGo').addEventListener('click', doAction);
     $('actBack').addEventListener('click', () => $('actDlg').close());
     wire();
     load(true);
   }
+
+  // ?q=LD-2026-0012 (link from the e-mail) → prefill search; kept through the Microsoft sign-in redirect
+  try {
+    const q0 = new URLSearchParams(location.search).get('q');
+    if (q0) sessionStorage.setItem('busenaQ', q0);
+  } catch (_) {}
 
   const gateRoot = $('gate');
   if (!SPC.configured) {
