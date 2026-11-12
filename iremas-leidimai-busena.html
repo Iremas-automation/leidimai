@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Leidimų užsakymų būsena</title>
+<meta name="robots" content="noindex, nofollow">
+<title>Iremas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -226,6 +227,16 @@ dialog pre.pre-error{background:var(--err-soft);color:var(--err);white-space:pre
   footer{padding:20px 16px}
 }
 
+/* ---- locked = not signed in yet: show only a minimal login card ---- */
+.gate-brand{display:none;font-weight:700;font-size:22px;letter-spacing:.2em;margin-right:-.2em;color:var(--primary);margin-bottom:22px}
+body.locked .topbar,body.locked .hero,body.locked footer,body.locked .stepper{display:none}
+body.locked main{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;max-width:none}
+body.locked #app,body.locked #gate{width:100%;max-width:380px}
+body.locked .gate{padding:36px 28px}
+body.locked .gate-brand{display:block}
+body.locked .gate .card-title{font-size:19px}
+body.locked .gate p{margin:6px auto 22px}
+
 /* ===== Status page (TKS-style list) ===== */
 main.wide{max-width:1200px}
 .list-layout{display:flex;gap:18px;align-items:flex-start}
@@ -323,7 +334,7 @@ main.wide{max-width:1200px}
 
 </style>
 </head>
-<body class="staff">
+<body class="staff locked" data-title="Leidimų užsakymų būsena">
 <header class="topbar">
   <span class="top-left"></span>
   <div class="brand"><span class="wm">IREMAS</span><span class="tag">Koncerno „Achemos grupė“ narė</span></div>
@@ -563,14 +574,23 @@ window.SPC = (function () {
       return;
     }
     if (!api.account) {
-      root.replaceChildren(gateCard('Prisijunkite', intro, 'Prisijungti su Microsoft paskyra', true,
+      root.replaceChildren(gateCard('Prisijungimas', 'Naudokite darbo Microsoft paskyrą.', 'Prisijungti', true,
         () => pca.loginRedirect({ scopes: SCOPES, prompt: 'select_account' })));
       return;
     }
     pca.setActiveAccount(api.account);
+    unlock();
     showUser();
     onReady();
   }
+
+  /* Before sign-in the page shows only the login card (body.locked hides header, title and footer,
+     the tab title is a neutral "Iremas"). After sign-in the real page and title appear. */
+  function unlock() {
+    document.body.classList.remove('locked');
+    if (document.body.dataset.title) document.title = document.body.dataset.title;
+  }
+  api.unlock = unlock;
 
   function showUser() {
     const box = document.querySelector('.top-right');
@@ -598,7 +618,7 @@ window.SPC = (function () {
 function gateCard(title, text, btnText, msLogo, onClick) {
   const card = document.createElement('section');
   card.className = 'card gate';
-  card.innerHTML = '<h2 class="card-title"></h2><p></p>';
+  card.innerHTML = '<div class="gate-brand" aria-hidden="true">IREMAS</div><h2 class="card-title"></h2><p></p>';
   card.querySelector('h2').textContent = title;
   card.querySelector('p').textContent = text;
   if (btnText) {
