@@ -228,12 +228,10 @@ dialog pre.pre-error{background:var(--err-soft);color:var(--err);white-space:pre
 }
 
 /* ---- locked = not signed in yet: show only a minimal login card ---- */
-.gate-brand{display:none;font-weight:700;font-size:22px;letter-spacing:.2em;margin-right:-.2em;color:var(--primary);margin-bottom:22px}
 body.locked .topbar,body.locked .hero,body.locked footer,body.locked .stepper{display:none}
 body.locked main{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;max-width:none}
 body.locked #app,body.locked #gate{width:100%;max-width:380px}
 body.locked .gate{padding:36px 28px}
-body.locked .gate-brand{display:block}
 body.locked .gate .card-title{font-size:19px}
 body.locked .gate p{margin:6px auto 22px}
 
@@ -543,7 +541,7 @@ window.SPC = (function () {
       return;
     }
     if (!api.account) {
-      root.replaceChildren(gateCard('Prisijungimas', 'Naudokite darbo Microsoft paskyrą.', 'Prisijungti', true,
+      root.replaceChildren(gateCard('Prisijungimas', 'Naudokite Microsoft paskyrą.', 'Prisijungti', true,
         () => pca.loginRedirect({ scopes: SCOPES, prompt: 'select_account' })));
       return;
     }
@@ -587,7 +585,7 @@ window.SPC = (function () {
 function gateCard(title, text, btnText, msLogo, onClick) {
   const card = document.createElement('section');
   card.className = 'card gate';
-  card.innerHTML = '<div class="gate-brand" aria-hidden="true">IREMAS</div><h2 class="card-title"></h2><p></p>';
+  card.innerHTML = '<h2 class="card-title"></h2><p></p>';
   card.querySelector('h2').textContent = title;
   card.querySelector('p').textContent = text;
   if (btnText) {
