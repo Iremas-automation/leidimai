@@ -3,3 +3,6 @@
 README.md
 wrangler.jsonc
 .assetsignore
+.wrangler
+.gitignore
+node_modules
