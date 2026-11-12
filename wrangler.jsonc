@@ -2,6 +2,10 @@
   // Cloudflare Worker that only serves the static files in this repo (no Worker code).
   "name": "leidimai",
   "compatibility_date": "2026-11-12",
+  // Keep the *.workers.dev address for testing until leidimai.iremas.lt is set up.
+  "workers_dev": true,
+  // No per-version preview copies: MSAL wouldn't work on them anyway (no redirect URI).
+  "preview_urls": false,
   "assets": {
     // Serve files from the repo root; .assetsignore keeps README/config out.
     "directory": "./",
