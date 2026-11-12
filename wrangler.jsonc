@@ -1,0 +1,13 @@
+{
+  // Cloudflare Worker that only serves the static files in this repo (no Worker code).
+  "name": "leidimai",
+  "compatibility_date": "2026-11-12",
+  "assets": {
+    // Serve files from the repo root; .assetsignore keeps README/config out.
+    "directory": "./",
+    // Clean URLs: "/" serves index.html, "/x.html" redirects to "/x".
+    // MSAL redirect URIs must therefore be "https://<host>/" and "https://<host>/iremas-leidimai-busena".
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}
